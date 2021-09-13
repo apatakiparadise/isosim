@@ -19,6 +19,9 @@
 
 namespace isosim {
 
+
+
+
 class IsosimROS {
 
 
@@ -32,11 +35,11 @@ class IsosimROS {
         
     private:
         
-
-        static void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
-        static void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
+        //was all static here
+        // static void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
+        // static void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
         
-        static SimTK::Vec3 latestForce;
+        // static SimTK::Vec3 latestForce;
 
 };
 
@@ -57,7 +60,7 @@ class IsosimEngine {
     private:
 
         int programState; //running/stopping
-        static SimTK::Vec<3,double> latestForce;
+        // static SimTK::Vec<3,double> latestForce;
         bool generateIDModel(void); //imports/configures inverse dynamics model
         OpenSim::Model IDModel;
 

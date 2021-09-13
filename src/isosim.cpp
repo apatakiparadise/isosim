@@ -18,7 +18,10 @@ using namespace SimTK;
 // namespace isosim{
 
 
-
+//callbacks (will need more)
+static void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
+static void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
+static SimTK::Vec3 latestForce;
 
 //public within namespace
 RosbridgeWsClient RBcppClient("localhost:9090");
@@ -37,8 +40,10 @@ int main(void) {
 
     engine.init();
 
-    while (engine.get_state() != ISOSIM_END_EXPERIMENT) {
+    engine.set_state(ISOSIM_RUN); //TODO: delete this once control comms is implemented
 
+    while (engine.get_state() != ISOSIM_END_EXPERIMENT) {
+        
         switch(engine.get_state()) {
 
             case(ISOSIM_RUN):
@@ -61,9 +66,11 @@ int main(void) {
 }
 
 
-/***************************************************************
-* IsosimROS FUNCTIONS
-***************************************************************/
+/************************************************************************************************************************************
+ * **********************************************************************************************************************************
+ * IsosimROS FUNCTIONS
+ * **********************************************************************************************************************************
+*************************************************************************************************************************************/
 
 void IsosimROS::init(void) {
 
@@ -79,14 +86,14 @@ void IsosimROS::init(void) {
     latestForce = {0,0,0};
 
     RBcppClient.addClient("service_advertiser");
-    RBcppClient.advertiseService("service_advertiser", "/isosimservice", "std_srvs/SetBool", IsosimROS::advertiserCallback);
+    RBcppClient.advertiseService("service_advertiser", "/isosimservice", "std_srvs/SetBool", advertiserCallback);
 
     RBcppClient.addClient("topic_advertiser");
     RBcppClient.advertise("topic_advertiser", "/isosimtopic", "std_msgs/String");
 
 
     RBcppClient.addClient("topic_subscriber");
-    RBcppClient.subscribe("topic_subscriber", "/twistfromCMD",IsosimROS::forceSubscriberCallback);
+    RBcppClient.subscribe("topic_subscriber", "/twistfromCMD",forceSubscriberCallback);
 
     //publish some dataroslaunch rosbridge_server rosbridge_websocket.launch
 
@@ -103,7 +110,7 @@ void IsosimROS::init(void) {
 
 SimTK::Vec3 IsosimROS::get_latest_force(void) {
 
-    SimTK::Vec3 latestForce;
+    // SimTK::Vec3 latestForce;
 
     //threadsafe...... not
     return latestForce;
@@ -118,7 +125,7 @@ SimTK::Vec3 IsosimROS::get_latest_force(void) {
 
 
 //private definitions
-void IsosimROS::advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message)
+void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message)
 {
     // message->string() is destructive, so we have to buffer it first
     std::string messagebuf = in_message->string();
@@ -143,7 +150,7 @@ void IsosimROS::advertiserCallback(std::shared_ptr<WsClient::Connection> /*conne
 }
 
 
-void IsosimROS::forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message)
+void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message)
 {
     #ifdef DEBUG
     // std::cout << "subscriberCallback(): Message Received: " << in_message->string() << std::endl;
@@ -183,12 +190,13 @@ void IsosimROS::forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*
     double y = forceD["msg"]["linear"]["y"].GetDouble();
     double z = forceD["msg"]["linear"]["z"].GetDouble();
 
-    static SimTK::Vec3 forceFromROS = Vec3(x,y,z);
+    // static SimTK::Vec3 forceFromROS = Vec3(x,y,z);
     
     
-    SimTK::Vec3 _latestForce;
-    _latestForce = {x,y,z};
-    std::cout <<"_latestforce" << _latestForce.get(0) << std::endl;
+    // SimTK::Vec3 latestForce;
+    // IsosimROS::latestForce = {x,y,z};
+    latestForce = {x,y,z};
+    // std::cout <<"_latestforce" << latestForce.get(0) << std::endl;
     // latestForce.set(2,z);
     
 
