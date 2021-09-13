@@ -35,11 +35,8 @@ class IsosimROS {
         
     private:
         
-        //was all static here
-        // static void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
-        // static void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
+        void unimplemented(void);
         
-        // static SimTK::Vec3 latestForce;
 
 };
 

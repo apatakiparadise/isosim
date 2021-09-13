@@ -243,8 +243,8 @@ void IsosimEngine::set_state(int state) {
 void IsosimEngine::loop(void) {
 
     while(1) {
-        std::cout << "forcefromcomms" << commsClient.get_latest_force() << std::endl;
-        // std::this_thread::sleep_for(std::chrono::seconds(1));
+        // std::cout << "forcefromcomms" << commsClient.get_latest_force() << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(1));
 
     }
 ;
