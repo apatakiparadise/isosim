@@ -69,3 +69,26 @@ foreach(dataFile ${DATA_FILES})
         ${dataFile}
         ${CMAKE_BINARY_DIR})
 endforeach(dataFile)
+
+#copy osim models to Models folder in running directory
+file(GLOB OSIM_MODELS src/Models/*.osim)
+
+file(MAKE_DIRECTORY build/Models)
+#add_custom_command(
+#    TARGET ${TARGET}
+#    COMMAND ${CMAKE_COMMAND}
+#    ARGS -E make_directory
+#    ${CMAKE_BINARY_DIR}/Models
+#    )   
+
+
+foreach(osimModel ${OSIM_MODELS})
+    get_filename_component(osimModelName, ${osimModel}, NAME)
+    message(STATUS ${osimModel})
+    add_custom_command(
+        TARGET ${TARGET}
+        COMMAND ${CMAKE_COMMAND}
+        ARGS -E copy
+        ${osimModel}
+        ${CMAKE_BINARY_DIR}/Models/${osimModelName})
+endforeach(osimModel)

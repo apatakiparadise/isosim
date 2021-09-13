@@ -27,14 +27,17 @@ class IsosimROS {
 
         int subscriber(void);
         int publisher(void);
+
+        SimTK::Vec3 get_latest_force(void); //THREADSAFE? no
         
     private:
         
 
         static void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
         static void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
+        
+        static SimTK::Vec3 latestForce;
 
-        Eigen::Vector3d latestForce;
 };
 
 class IsosimEngine {
@@ -47,21 +50,26 @@ class IsosimEngine {
         void loop(void);
 
         IsosimROS commsClient;
+
+        int get_state(void);
+        void set_state(int state);
     
     private:
 
         int programState; //running/stopping
-
+        static SimTK::Vec<3,double> latestForce;
         bool generateIDModel(void); //imports/configures inverse dynamics model
+        OpenSim::Model IDModel;
 
         bool generateFDModel(void); //imports/configures forward dynamics model
+        OpenSim::Model FDModel;
 
         void forwardD(void);
 
         void inverseD(void);
 
         void step(void);
-}
+};
 
 
 

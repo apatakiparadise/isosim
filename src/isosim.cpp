@@ -13,6 +13,8 @@
 #include "isosim.h"
 
 using namespace isosim;
+using namespace SimTK;
+
 // namespace isosim{
 
 
@@ -26,7 +28,7 @@ int main(void) {
 
     //do stuff
 
-    std::cout << "main has been called" << std::endl;
+    std::cout << "main has been called" << std::endl; std::cout << get_current_dir_name() << std::endl;
     // IsosimROS rosclient;
 
     // rosclient.init();
@@ -35,13 +37,13 @@ int main(void) {
 
     engine.init();
 
-    while (engine::protocolState != ISOSIM_END_EXPERIMENT) {
+    while (engine.get_state() != ISOSIM_END_EXPERIMENT) {
 
-        switch(engine::protocolState) {
+        switch(engine.get_state()) {
 
             case(ISOSIM_RUN):
                 std::cout << "starting loop" << std::endl;
-                engine::loop(); //shouldn't return unless control signal received
+                engine.loop(); //shouldn't return unless control signal received
                 break;
 
             case(ISOSIM_STANDBY):
@@ -71,6 +73,11 @@ void IsosimROS::init(void) {
     // RBcppClientptr = &RBcppClient;
     // RBcppClient = RosbridgeWsClient("localhost:9090");
 
+    // static SimTK::Vec3 ForceVar(0,0,0);
+    // latestForce = &ForceVar;
+    SimTK::Vec3 latestForce;
+    latestForce = {0,0,0};
+
     RBcppClient.addClient("service_advertiser");
     RBcppClient.advertiseService("service_advertiser", "/isosimservice", "std_srvs/SetBool", IsosimROS::advertiserCallback);
 
@@ -81,23 +88,31 @@ void IsosimROS::init(void) {
     RBcppClient.addClient("topic_subscriber");
     RBcppClient.subscribe("topic_subscriber", "/twistfromCMD",IsosimROS::forceSubscriberCallback);
 
-    //publish some data
+    //publish some dataroslaunch rosbridge_server rosbridge_websocket.launch
+
     RBcppClient.addClient("test_publisher");
     rapidjson::Document d;
     d.SetObject();
     d.AddMember("data", "Test message from /isosimtopic", d.GetAllocator());
-    while(1) {
-        RBcppClient.publish("/isosimtopic",d);
-        std::this_thread::sleep_for(std::chrono::seconds(30));
-    }
+    // while(1) {
+        // RBcppClient.publish("/isosimtopic",d);
+        // std::this_thread::sleep_for(std::chrono::seconds(30));
+    // }
     return;
+}
+
+SimTK::Vec3 IsosimROS::get_latest_force(void) {
+
+    SimTK::Vec3 latestForce;
+
+    //threadsafe...... not
+    return latestForce;
 }
 
 
 
-
-
 // rostopic pub -r 10 /twistfromCMD geometry_msgs/Twist  "{linear:  {x: 0.1, y: 0.0, z: 0.0}, angular: {x: 0.0,y: 0.0, z: 0.0}}"
+// roslaunch rosbridge_server rosbridge_websocket.launch
 
 
 
@@ -168,9 +183,13 @@ void IsosimROS::forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*
     double y = forceD["msg"]["linear"]["y"].GetDouble();
     double z = forceD["msg"]["linear"]["z"].GetDouble();
 
-    latestForce = {x,y,z};
-
-
+    static SimTK::Vec3 forceFromROS = Vec3(x,y,z);
+    
+    
+    SimTK::Vec3 _latestForce;
+    _latestForce = {x,y,z};
+    std::cout <<"_latestforce" << _latestForce.get(0) << std::endl;
+    // latestForce.set(2,z);
     
 
     // printf("linear = %d\n", document["linear"].GetString());
@@ -178,9 +197,11 @@ void IsosimROS::forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*
 
 
 
-/***************************************************************
-* IsosimEngine FUNCTIONS
-***************************************************************/
+/*****************************************************************************************************************************
+ ******************************************************************************************************************************
+ * IsosimEngine FUNCTIONS
+ ******************************************************************************************************************************
+/******************************************************************************************************************************/
 
 /*************PUBLIC*******************/
 void IsosimEngine::init(void) {
@@ -199,19 +220,43 @@ void IsosimEngine::init(void) {
 
 }
 
+int IsosimEngine::get_state(void) {
+
+    return programState;
+}
+
+//NOT THREADSAFE (yet)
+void IsosimEngine::set_state(int state) {
+
+    programState = state;
+}
+
+
+void IsosimEngine::loop(void) {
+
+    while(1) {
+        std::cout << "forcefromcomms" << commsClient.get_latest_force() << std::endl;
+        // std::this_thread::sleep_for(std::chrono::seconds(1));
+
+    }
+;
+}
 
 /*******PRIVATE***************/
 
-void IsosimEngine::generateIDModel(void) {
+bool IsosimEngine::generateIDModel(void) {
 
     //import model
-
+    IDModel =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
     //setup everything
-
+    
     //get integrator and save it to class variable
+
+
+    return true;
 }
 
-void IsosimEngine::generateFDModel(void) {
+bool IsosimEngine::generateFDModel(void) {
 
 
     //import model
@@ -220,7 +265,7 @@ void IsosimEngine::generateFDModel(void) {
 
     //get integrator and save it to class variable
 
-
+    return true;
 }
 
 
