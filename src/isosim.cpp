@@ -257,6 +257,33 @@ bool IsosimEngine::generateIDModel(void) {
     //import model
     IDModel =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
     //setup everything
+
+    //delete below
+    // Define the initial and final simulation times
+    double initialTime = 0.0;
+    double finalTime = 30.00;//*0.01;
+
+    // set use visualizer to true to visualize the simulation live
+    IDModel.setUseVisualizer(true);
+
+    // Initialize the system and get the default state
+    SimTK::State& si = IDModel.initSystem();
+    OpenSim::Manager manager(IDModel);
+    manager.setIntegratorAccuracy(1.0e-6);
+
+    // Print out details of the model
+    IDModel.printDetailedInfo(si, std::cout);
+
+    // Integrate from initial time to final time
+    si.setTime(initialTime);
+    manager.initialize(si);
+    std::cout<<"\nIntegrating from "<<initialTime<<" to "<<finalTime<<std::endl;
+    manager.integrate(finalTime);
+    //delete above
+
+
+
+
     
     //get integrator and save it to class variable
 
