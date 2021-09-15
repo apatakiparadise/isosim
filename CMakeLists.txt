@@ -58,17 +58,6 @@ target_link_libraries(${TARGET} ${OpenSim_LIBRARIES})
 target_link_libraries(${TARGET} rosbridgecpp)
 
 
-# This block copies the additional files into the running directory
-# For example vtp, obj files. Add to the end for more extentions
-file(GLOB DATA_FILES *.vtp *.obj)
-foreach(dataFile ${DATA_FILES})
-    add_custom_command(
-        TARGET ${TARGET}
-        COMMAND ${CMAKE_COMMAND}
-        ARGS -E copy
-        ${dataFile}
-        ${CMAKE_BINARY_DIR})
-endforeach(dataFile)
 
 #copy osim models to Models folder in running directory
 file(GLOB OSIM_MODELS src/Models/*.osim)
@@ -92,3 +81,18 @@ foreach(osimModel ${OSIM_MODELS})
         ${osimModel}
         ${CMAKE_BINARY_DIR}/Models/${osimModelName})
 endforeach(osimModel)
+
+
+# This block copies the additional files into the running directory
+# For example vtp, obj files. Add to the end for more extentions
+file(MAKE_DIRECTORY build/Models/Geometry)
+file(GLOB DATA_FILES src/Models/Geometry/*.vtp src/Models/Geometry/*.obj)
+foreach(dataFile ${DATA_FILES})
+    add_custom_command(
+        TARGET ${TARGET}
+        COMMAND ${CMAKE_COMMAND}
+        ARGS -E copy
+        ${dataFile}
+        ${CMAKE_BINARY_DIR}/Models/Geometry)
+endforeach(dataFile)
+
