@@ -258,18 +258,48 @@ bool IsosimEngine::generateIDModel(void) {
     IDModel =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
     //setup everything
 
+    //get joints
+    const OpenSim::JointSet& IDjointset = IDModel.get_JointSet();
+    const OpenSim::Joint& IDshoulderJoint = IDjointset.get("r_shoulder");
+    const OpenSim::Coordinate& IDshoulderelevcoord = IDshoulderJoint.getCoordinate();
+ 
+    const OpenSim::Joint& IDelbowJoint = IDjointset.get("r_elbow");
+    const OpenSim::Coordinate& IDelbowflex = IDelbowJoint.getCoordinate();
+
+    std::cout << IDelbowflex.getName() << "<----- elbowflex name \n";
+
+
+    //get bods
+    const OpenSim::BodySet& IDbodyset = IDModel.get_BodySet();
+    const OpenSim::Body& humerusbod = IDbodyset.get("r_humerus");
+    std::cout << humerusbod.getName() << "<---name of humerusbod\n";
+    /////////////////////////////////////////////
+    // DEFINE CONSTRAINTS IMPOSED ON THE MODEL //
+    /////////////////////////////////////////////
+    
+
+
     //delete below
     // Define the initial and final simulation times
     double initialTime = 0.0;
-    double finalTime = 30.00;//*0.01;
+    double finalTime = 30.00*1;
 
     // set use visualizer to true to visualize the simulation live
     IDModel.setUseVisualizer(true);
 
+    Vec3 grav = IDModel.get_gravity()*1;
+    IDModel.set_gravity(grav);
     // Initialize the system and get the default state
     SimTK::State& si = IDModel.initSystem();
     OpenSim::Manager manager(IDModel);
     manager.setIntegratorAccuracy(1.0e-6);
+
+    //lock joints
+    IDshoulderJoint.getCoordinate().setLocked(si,true);
+    IDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
+    IDelbowJoint.getCoordinate().setLocked(si, true);
+
+
 
     // Print out details of the model
     IDModel.printDetailedInfo(si, std::cout);

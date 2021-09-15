@@ -70,16 +70,19 @@ file(MAKE_DIRECTORY build/Models)
 #    ${CMAKE_BINARY_DIR}/Models
 #    )   
 
-
+set(osimModelName none CACHE TYPE STRING)
 foreach(osimModel ${OSIM_MODELS})
-    get_filename_component(osimModelName, ${osimModel}, NAME)
-    message(STATUS ${osimModel})
+    
+    get_filename_component(osimModelName ${osimModel} NAME)
+    #cmake_path(GET osimModelName, ${osimModel}, FILENAME)
+    message(STATUS name: ${osimModelName})
     add_custom_command(
         TARGET ${TARGET}
         COMMAND ${CMAKE_COMMAND}
         ARGS -E copy
         ${osimModel}
         ${CMAKE_BINARY_DIR}/Models/${osimModelName})
+    message(STATUS hi ${CMAKE_BINARY_DIR}/Models/${osimModelName})
 endforeach(osimModel)
 
 
