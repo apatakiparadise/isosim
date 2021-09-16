@@ -60,6 +60,7 @@ class IsosimEngine {
         // static SimTK::Vec<3,double> latestForce;
         bool generateIDModel(void); //imports/configures inverse dynamics model
         OpenSim::Model IDModel;
+        OpenSim::ExternalForce IDForceFromROS;
 
         bool generateFDModel(void); //imports/configures forward dynamics model
         OpenSim::Model FDModel;

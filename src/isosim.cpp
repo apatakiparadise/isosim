@@ -273,6 +273,12 @@ bool IsosimEngine::generateIDModel(void) {
     const OpenSim::BodySet& IDbodyset = IDModel.get_BodySet();
     const OpenSim::Body& humerusbod = IDbodyset.get("r_humerus");
     std::cout << humerusbod.getName() << "<---name of humerusbod\n";
+
+    //attach force to marker
+    IDForceFromROS.setAppliedToBodyName("r_radius_styloid");
+    IDForceFromROS.setForceExpressedInBodyName("r_radius_styloid");
+    IDForceFromROS.setPointExpressedInBodyName("r_radius_styloid");
+    std::cout << IDForceFromROS.getAppliedToBodyName() << "<----force applied to body\n";
     /////////////////////////////////////////////
     // DEFINE CONSTRAINTS IMPOSED ON THE MODEL //
     /////////////////////////////////////////////
@@ -295,11 +301,15 @@ bool IsosimEngine::generateIDModel(void) {
     manager.setIntegratorAccuracy(1.0e-6);
 
     //lock joints
-    IDshoulderJoint.getCoordinate().setLocked(si,true);
+    // IDshoulderJoint.getCoordinate().setLocked(si,true);
     IDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
     IDelbowJoint.getCoordinate().setLocked(si, true);
 
+    IDForceFromROS.setAppliesForce(si, true);    
 
+    //TODO: figure out how to set the value of the ExternalForce (do I need to create a Storage object and then update that?)
+    //TODO: I guess that would work but in real-time you would need to change both the time array and the force values regularly...
+    // TODO: Otherwise if I can access the functions that actually put the force into the model, then it could be okay...
 
     // Print out details of the model
     IDModel.printDetailedInfo(si, std::cout);
