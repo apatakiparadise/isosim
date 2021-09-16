@@ -254,6 +254,10 @@ void IsosimEngine::loop(void) {
 
 bool IsosimEngine::generateIDModel(void) {
 
+    // Define the initial and final simulation times //SHOULD BECOME OBSELETE IN REALTIME
+    double initialTime = 0.0;
+    double finalTime = 30.00*1;
+
     //import model
     IDModel =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
     //setup everything
@@ -278,7 +282,23 @@ bool IsosimEngine::generateIDModel(void) {
     IDForceFromROS.setAppliedToBodyName("r_radius_styloid");
     IDForceFromROS.setForceExpressedInBodyName("r_radius_styloid");
     IDForceFromROS.setPointExpressedInBodyName("r_radius_styloid");
+    IDForceFromROS.set_appliesForce(true);
     std::cout << IDForceFromROS.getAppliedToBodyName() << "<----force applied to body\n";
+
+    OpenSim::Storage IDForceStorage;
+    IDForceStorage.setName("IDStorage");
+    IDForceStorage.setColumnLabels(...); //TODO
+    for (double tim = initialTime; tim <= initialTime; tim+=1.0e-6) {
+        IDForceStorage.append(tim,SimTK::Vec3(10,10,10));
+        
+    }
+    std::cout << "finished storage appending\n";
+
+    IDForceFromROS.setDataSource(IDForceStorage);
+
+    IDModel.addForce(&IDForceFromROS);
+    
+    OpenSim::InverseDynamicsSolver idSolver(IDModel);
     /////////////////////////////////////////////
     // DEFINE CONSTRAINTS IMPOSED ON THE MODEL //
     /////////////////////////////////////////////
@@ -286,9 +306,7 @@ bool IsosimEngine::generateIDModel(void) {
 
 
     //delete below
-    // Define the initial and final simulation times
-    double initialTime = 0.0;
-    double finalTime = 30.00*1;
+
 
     // set use visualizer to true to visualize the simulation live
     IDModel.setUseVisualizer(true);
@@ -306,7 +324,7 @@ bool IsosimEngine::generateIDModel(void) {
     IDelbowJoint.getCoordinate().setLocked(si, true);
 
     IDForceFromROS.setAppliesForce(si, true);    
-
+    
     //TODO: figure out how to set the value of the ExternalForce (do I need to create a Storage object and then update that?)
     //TODO: I guess that would work but in real-time you would need to change both the time array and the force values regularly...
     // TODO: Otherwise if I can access the functions that actually put the force into the model, then it could be okay...
