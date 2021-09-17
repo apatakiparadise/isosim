@@ -10,8 +10,10 @@
 
 
 #include <OpenSim/OpenSim.h>
+#include "OpenSim/Common/STOFileAdapter.h"
 #include <rosbridge_ws_client.hpp>
 
+#include "IsometricExternalForce.h"
 
 #define ISOSIM_STANDBY 0
 #define ISOSIM_RUN 1
