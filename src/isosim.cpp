@@ -264,7 +264,8 @@ bool IsosimEngine::generateIDModel(void) {
     const double timestep = 1e-3;
 
     //import model
-    IDModel =  OpenSim::Model("Models/arm26_ID.osim"); std::cout << "loaded model from arm26" << std::endl;
+    IDModel =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
+    std::cout << IDModel.getName() << "<----------------model name\n\n";
     //setup everything
 
     //get joints
@@ -278,10 +279,38 @@ bool IsosimEngine::generateIDModel(void) {
     std::cout << IDelbowflex.getName() << "<----- elbowflex name \n";
 
 
+
     //get bods
     const OpenSim::BodySet& IDbodyset = IDModel.get_BodySet();
     const OpenSim::Body& humerusbod = IDbodyset.get("r_humerus");
+    const OpenSim::Body& radiusbod = IDbodyset.get("r_ulna_radius_hand");
     std::cout << humerusbod.getName() << "<---name of humerusbod\n";
+    std::cout << radiusbod.getName() << "<---name of radiusbod\n";
+    IDbodyset.print("bodyset.bods");
+
+    //get wrist point
+    SimTK::Vec3 wristPointLoc = IDModel.getMarkerSet().get("r_radius_styloid").get_location();
+    // SimTK::State& si = IDModel.initSystem();
+
+    OpenSim::PointActuator endEffector(radiusbod.getName());
+    endEffector.setName("end_effector");
+    std::cout << endEffector.get_body() << "  <-- name of body for end effector \n";
+    endEffector.set_point(wristPointLoc);
+    endEffector.set_force_is_global(true); //force coordinates will be in ground frame
+    double optimalEndForce = 1000; //N
+    endEffector.setOptimalForce(optimalEndForce);
+    std::cout << endEffector.getOptimalForce() << "  <-- optimal force from endeffector\n";
+
+    IDModel.addForce(&endEffector);
+    
+    //add controller for actuator
+    OpenSim::PrescribedController forceController;
+    forceController.setActuators(IDModel.updActuators());
+    forceController.prescribeControlForActuator("end_effector", new OpenSim::Constant(1.0));
+
+
+
+
 
     //attach force to marker
     IDForceFromROS.setName("forceFromROS");
@@ -289,6 +318,7 @@ bool IsosimEngine::generateIDModel(void) {
     IDForceFromROS.setForceExpressedInBodyName("r_humerus");
     IDForceFromROS.setPointExpressedInBodyName("r_humerus");
     IDForceFromROS.setForceIdentifier("Force1");
+    IDForceFromROS.setPointIdentifier("wrist_point");
     IDForceFromROS.set_appliesForce(true);
     std::cout << IDForceFromROS.getAppliedToBodyName() << "<----force applied to body\n";
 
@@ -301,17 +331,23 @@ bool IsosimEngine::generateIDModel(void) {
     IDForceStorage.setColumnLabels(IDForceStorageColumns); //TODO
     // IDForceStorage.setMax
     for (double tim = initialTime; tim <= finalTime; tim+=timestep) {
-        IDForceStorage.append(tim,SimTK::Vec3(100,100,100)*tim);
+        IDForceStorage.append(tim,SimTK::Vec3(0,0,0)*tim);
         
+        
+
     }
+    SimTK::Vector vv;
+    std::cout << IDForceStorage.getData(finalTime-timestep,0,vv) << "<---storage at end\n";
     std::cout << "finished storage appending\n";
 
     IDForceFromROS.setDataSource(IDForceStorage);
     // IDModel.getForceSet()
 
+    
+
     std::cout << "is this our error point?\n";
     // IDModel.addForce(&IDForceFromROS);
-    IDModel.addComponent(&IDForceFromROS);
+    // IDModel.addComponent(&IDForceFromROS);
 
     OpenSim::InverseDynamicsSolver idSolver(IDModel);
     /////////////////////////////////////////////
@@ -327,7 +363,8 @@ bool IsosimEngine::generateIDModel(void) {
     IDModel.setUseVisualizer(true);
 
     //reporters
-    OpenSim::ForceReporter* forceRep = new OpenSim::ForceReporter(&IDModel);  
+    OpenSim::ForceReporter* forceRep = new OpenSim::ForceReporter(&IDModel);
+    // forceRep->getForceStorage().print("forcestorage.mot");
     IDModel.updAnalysisSet().adoptAndAppend(forceRep);
 
     Vec3 grav = IDModel.get_gravity()*1;
@@ -342,10 +379,11 @@ bool IsosimEngine::generateIDModel(void) {
     IDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
     IDelbowJoint.getCoordinate().setLocked(si, true);
 
-    IDForceFromROS.setAppliesForce(si, true);    
-    SimTK::Vec3 wristPoint = IDModel.getMarkerSet().get("r_radius_styloid").get_location();
+
+    // IDForceFromROS.setAppliesForce(si, true);    //uncomment this
+    // SimTK::Vec3 wristPoint = IDModel.getMarkerSet().get("r_radius_styloid").get_location();
     // SimTK::Vec3 wristPoint = IDModel.get("r_radius_styloid").getOffset();
-    std::cout << wristPoint << "<----- styloid offset\n";
+    std::cout << wristPointLoc << "<----- styloid offset\n";
     SimTK::Vector_<SimTK::SpatialVec> bodyForces(0);
     // IDForceFromROS.applyForceToPoint(si, humerusbod, wristPoint,SimTK::Vec3(10,10,10),bodyForces);
     // IDForceFromROS.computeForce(si,bodyForces,SimTK::Vec3(10,10,20));
@@ -354,8 +392,8 @@ bool IsosimEngine::generateIDModel(void) {
     //TODO: I guess that would work but in real-time you would need to change both the time array and the force values regularly...
     // TODO: Otherwise if I can access the functions that actually put the force into the model, then it could be okay...
 
-
-
+    IDModel.finalizeConnections();
+    IDModel.print("isosimModel.osim");
     // Print out details of the model
     IDModel.printDetailedInfo(si, std::cout);
 
@@ -369,8 +407,14 @@ bool IsosimEngine::generateIDModel(void) {
 
     IDModel.getVisualizer().show(state_);
 
-    //perform ID
 
+    //test code
+    // IDModel.getComponent("forceFromROS").printSocketInfo(); return false;
+    //end test code
+
+
+    //perform ID
+    #ifdef REALTIME
     // double mobsize = IDModel.getMultibodySystem().getMobilityForces(state_, Stage::Dynamics).size();
     SimTK::Vector residualMobilityForces;
     double simTime = 0;
@@ -391,6 +435,8 @@ bool IsosimEngine::generateIDModel(void) {
         // Vector& appliedMobilityForces = appliedMobilityForcesC;
         // Vector_<SpatialVec>& appliedBodyForces = appliedBodyForcesC; 
         const SimTK::Vector testUdot = Test::randVector(state_.getNU())*0;
+        //// std::cout << "udot is a vector of length    " << state_.getNU() << std::endl;
+        //// std::cout << "q is a vector of length    " << state_.getNQ() << std::endl;
         // std::cout << "uddoted  " << simTime << std::endl; 
         // SimTK::Vector_<SimTK::SpatialVec> appliedBodyForces(IDModel.getMultibodySystem().getRigidBodyForces(state_, SimTK::Stage::Dynamics));
         // IDModel.getMultibodySystem().getMatterSubsystem().calcResidualForceIgnoringConstraints(
@@ -399,14 +445,16 @@ bool IsosimEngine::generateIDModel(void) {
         simTime+= timestep;
         std::cout << residualMobilityForces << std::endl;
     }
-
+    #else
     // Integrate from initial time to final time
     // si.setTime(initialTime);
     // manager.initialize(si);
-    // std::cout<<"\nIntegrating from "<<initialTime<<" to "<<finalTime<<std::endl;
-    // manager.integrate(finalTime);
-
+    std::cout<<"\nIntegrating from "<<initialTime<<" to "<<finalTime<<std::endl;
+    manager.integrate(finalTime);
+    #endif
     auto forcesTable = forceRep->getForcesTable();
+    forceRep->getForceStorage().print("forcestorage.mot");
+
     // std::string forceFilename
     OpenSim::STOFileAdapter::write(forcesTable, "forces.sto");
     
