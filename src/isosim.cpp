@@ -42,6 +42,12 @@ int main(void) {
 
     IsosimEngine engine;
 
+    engine.testPointActuator();
+
+    while(1) {
+        //do nothing
+    }
+
     engine.init();
 
     engine.set_state(ISOSIM_RUN); //TODO: delete this once control comms is implemented
@@ -290,27 +296,62 @@ bool IsosimEngine::generateIDModel(void) {
 
     //get wrist point
     SimTK::Vec3 wristPointLoc = IDModel.getMarkerSet().get("r_radius_styloid").get_location();
-    // SimTK::State& si = IDModel.initSystem();
+    // /*SimTK::State& si = */IDModel.initSystem();
 
     OpenSim::PointActuator endEffector(radiusbod.getName());
     endEffector.setName("end_effector");
     std::cout << endEffector.get_body() << "  <-- name of body for end effector \n";
     endEffector.set_point(wristPointLoc);
+    endEffector.set_point_is_global(false); //point coordinates are relative to radius
     endEffector.set_force_is_global(true); //force coordinates will be in ground frame
+    std::cout << endEffector.get_direction() << "<-- eE dir\n";//endEffector.set_direction(SimTK::Vec3(1,1,1));
     double optimalEndForce = 1000; //N
     endEffector.setOptimalForce(optimalEndForce);
     std::cout << endEffector.getOptimalForce() << "  <-- optimal force from endeffector\n";
 
     IDModel.addForce(&endEffector);
-    
+    // IDModel.finalizeConnections();
+    // SimTK::State& tmpState = IDModel.initSystem(); std::cout << "hello there\n";
     //add controller for actuator
-    OpenSim::PrescribedController forceController;
-    forceController.setActuators(IDModel.updActuators());
-    forceController.prescribeControlForActuator("end_effector", new OpenSim::Constant(1.0));
+    OpenSim::PrescribedController* forceController = new OpenSim::PrescribedController();
+    forceController->setActuators(IDModel.updActuators());
+    forceController->prescribeControlForActuator("end_effector", 
+            new OpenSim::Constant(1.0));
+    IDModel.addController(forceController);
+    
+    //try some stuff
+    IDModel.setGravity(Vec3(0,0,0)); IDModel.setUseVisualizer(false);
+    SimTK::State& tmpState = IDModel.initSystem(); std::cout << "hello there\n";
+    // IDModel.computeStateVariableDerivatives(tmpState); std::cout << "general KenOpenSi!";
+    // Vector udotActuatorCombo = tmpState.getUDot();
+    // udotActuatorCombo.dump("acceleration from actuator"); return false;
 
+    OpenSim::Manager tmpmanager(IDModel); std::cout << "probs\n";
+    tmpmanager.setIntegratorAccuracy(1.0e-3);
+    tmpState.getU().dump("initial U");
+    tmpState.setTime(initialTime);
+    tmpmanager.initialize(tmpState); tmpmanager.integrate(finalTime); 
+    std::cout << "i'll eat my hat\n\n\n";
+    return false; //get rid of this line
 
+    // // ------------------ Provide control signals for pointActuator ----------------
+    // Vector endEffectorControls(1); // input to addInControl should be a Vector
+    // endEffectorControls(0) = 1.0; // axis already defined when initializing
 
+    // Vector endEffectorVector(3); // to print out the whole force vector
+    // for (int i = 0; i < 3; i++){
+    //     endEffectorVector(i) = 1;
+    // }
+    // endEffectorVector.dump("Forces applied by the point Actuator:");
 
+    // // Add control values and set their values
+    // Vector modelControls  = IDModel.getDefaultControls();
+    // endEffector.addInControls(endEffectorControls, modelControls);
+    // IDModel.setDefaultControls(modelControls);
+
+    // endEffector.addInControls(forceController,IDModel.getDefaultControls());
+
+/*
 
     //attach force to marker
     IDForceFromROS.setName("forceFromROS");
@@ -347,7 +388,7 @@ bool IsosimEngine::generateIDModel(void) {
 
     std::cout << "is this our error point?\n";
     // IDModel.addForce(&IDForceFromROS);
-    // IDModel.addComponent(&IDForceFromROS);
+    // IDModel.addComponent(&IDForceFromROS); //to add to model (NOT CURRENTLY ADDED)
 
     OpenSim::InverseDynamicsSolver idSolver(IDModel);
     /////////////////////////////////////////////
@@ -356,7 +397,7 @@ bool IsosimEngine::generateIDModel(void) {
     
 
 
-    //delete below
+    // // // delete below
 
 
     // set use visualizer to true to visualize the simulation live
@@ -368,7 +409,7 @@ bool IsosimEngine::generateIDModel(void) {
     IDModel.updAnalysisSet().adoptAndAppend(forceRep);
 
     Vec3 grav = IDModel.get_gravity()*1;
-    IDModel.set_gravity(grav);
+    IDModel.set_gravity(grav);*/
     // Initialize the system and get the default state
     SimTK::State& si = IDModel.initSystem();
     OpenSim::Manager manager(IDModel);
@@ -392,11 +433,11 @@ bool IsosimEngine::generateIDModel(void) {
     //TODO: I guess that would work but in real-time you would need to change both the time array and the force values regularly...
     // TODO: Otherwise if I can access the functions that actually put the force into the model, then it could be okay...
 
-    IDModel.finalizeConnections();
     IDModel.print("isosimModel.osim");
     // Print out details of the model
     IDModel.printDetailedInfo(si, std::cout);
-
+    std::cout << "not reached\n" ;
+    #ifdef REALTIME
     //REALTIME STUFF BELOW
     si.setTime(initialTime);
     manager.initialize(si);
@@ -404,9 +445,9 @@ bool IsosimEngine::generateIDModel(void) {
     SimTK::Integrator* integrator_ = &manager.getIntegrator();
     std::cout << "we have an integrator    \n";
     SimTK::State state_ = integrator_->getAdvancedState();
-
+    std::cout << "maybe it's here ....\n";
     IDModel.getVisualizer().show(state_);
-
+    std::cout << "... or maybe it's here\n";
 
     //test code
     // IDModel.getComponent("forceFromROS").printSocketInfo(); return false;
@@ -414,7 +455,7 @@ bool IsosimEngine::generateIDModel(void) {
 
 
     //perform ID
-    #ifdef REALTIME
+    
     // double mobsize = IDModel.getMultibodySystem().getMobilityForces(state_, Stage::Dynamics).size();
     SimTK::Vector residualMobilityForces;
     double simTime = 0;
@@ -445,13 +486,15 @@ bool IsosimEngine::generateIDModel(void) {
         simTime+= timestep;
         std::cout << residualMobilityForces << std::endl;
     }
-    #else
+    #else //NOT REALTIME
     // Integrate from initial time to final time
-    // si.setTime(initialTime);
-    // manager.initialize(si);
+    std::cout << "commencing non-realtime simulation\n";
+    si.setTime(initialTime);
+    std::cout << "time is set, let's initialise the manager\n";
+    manager.initialize(si);
     std::cout<<"\nIntegrating from "<<initialTime<<" to "<<finalTime<<std::endl;
     manager.integrate(finalTime);
-    #endif
+    #endif /*
     auto forcesTable = forceRep->getForcesTable();
     forceRep->getForceStorage().print("forcestorage.mot");
 
@@ -461,7 +504,7 @@ bool IsosimEngine::generateIDModel(void) {
     //delete above
 
 
-
+*/ //debug
 
     
     //get integrator and save it to class variable
@@ -499,4 +542,68 @@ void IsosimEngine::step(void) {
 
 }
 
+
+
+void IsosimEngine::testPointActuator(void) {
+
+    try {
+
+        OpenSim::Model model =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
+        const OpenSim::BodySet& IDbodyset = model.get_BodySet();
+        const OpenSim::Body& humerusbod = IDbodyset.get("r_humerus");
+        const OpenSim::Body& radiusbod = IDbodyset.get("r_ulna_radius_hand");
+        std::cout << humerusbod.getName() << "<---name of humerusbod\n";
+        std::cout << radiusbod.getName() << "<---name of radiusbod\n";
+        IDbodyset.print("bodyset.bods");
+        model.setUseVisualizer(true);
+        model.initSystem();
+
+        OpenSim::PointActuator* pAct = new OpenSim::PointActuator(radiusbod.getName());
+        pAct->setName("pact");
+        double optforce = 10;
+        pAct->setOptimalForce(optforce);
+        pAct->set_force_is_global(true);
+        pAct->set_point(SimTK::Vec3(1,1,1));
+        pAct->set_point_is_global(false);
+        model.addForce(pAct);
+        model.finalizeConnections();
+
+        SimTK::State& state1 = model.initSystem();
+
+        Vector pointActuatorControls(1); // input to addInControl should be a Vector
+        pointActuatorControls(0) = optforce; // axis already defined when initializing
+        SimTK::Vec3 forceInG(1,1,1);
+        Vector pointActuatorVector(3); // to print out the whole force vector
+        for (int i = 0; i < 3; i++){
+            pointActuatorVector(i) = forceInG(i);
+        }
+        pointActuatorVector.dump("Forces applied by the point Actuator:");
+
+        // Add control values and set their values
+        Vector modelControls = model.getDefaultControls();
+        pAct->addInControls(pointActuatorControls, modelControls);
+        modelControls.dump("model controls post adding:");
+        model.setDefaultControls(modelControls);
+        std::cout << "hey hey, no segfault\n";
+        model.computeStateVariableDerivatives(state1);
+        Vector udotActuatorsCombination = state1.getUDot();
+        udotActuatorsCombination.dump("Accelerations due to actuator");
+
+
+        OpenSim::Manager manager(model);
+        manager.setIntegratorAccuracy(1e-3);
+        state1.setTime(0);
+        manager.initialize(state1);
+        double endt = 1;
+        manager.integrate(endt);
+
+
+
+
+    }
+    catch(const std::exception& ex) {
+        std::cout << "Exception here : " << ex.what() <<  std::endl;
+        return;
+    }
+};
 // } //namespace isosim

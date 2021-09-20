@@ -34,6 +34,7 @@ class IsosimROS {
         int publisher(void);
 
         SimTK::Vec3 get_latest_force(void); //THREADSAFE? no
+
         
     private:
         
@@ -55,6 +56,8 @@ class IsosimEngine {
 
         int get_state(void);
         void set_state(int state);
+
+        void testPointActuator(void); //delete this //TODO
     
     private:
 
