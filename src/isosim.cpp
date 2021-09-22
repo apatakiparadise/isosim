@@ -229,7 +229,7 @@ void IsosimEngine::init(void) {
 
     generateFDModel(); //
 
-
+    inverseD();
 
 
 }
@@ -262,7 +262,7 @@ bool IsosimEngine::generateIDModel(void) {
 
     // Define the initial and final simulation times //SHOULD BECOME OBSELETE IN REALTIME
     double initialTime = 0.0;
-    double finalTime = 30.00;// / 30;
+    double finalTime = 30.00 / 30;
     const double timestep = 1e-3 * 50;
 
     //import model
@@ -305,7 +305,8 @@ bool IsosimEngine::generateIDModel(void) {
     //init system (for end effector's sake)
     /*SimTK::State& si = */IDModel.initSystem();
 
-    OpenSim::PointActuator endEffector(radiusbod.getName());
+    // OpenSim::PointActuator endEffector(radiusbod.getName());
+    endEffector.set_body(radiusbod.getName());
     endEffector.setName("end_effector");
     std::cout << endEffector.get_body() << "  <-- name of body for end effector \n";
     endEffector.set_point(wristPointLoc);
@@ -413,6 +414,7 @@ bool IsosimEngine::generateIDModel(void) {
 
         OpenSim::InverseDynamicsSolver solver(IDModel);
         idSolver = &solver;
+        idSolver->setName("id_solver");
         residualMobilityForces = idSolver->solve(state_,testUdot,appliedMobilityForces,appliedBodyForces);
 
 
@@ -484,6 +486,14 @@ void IsosimEngine::step(void) {
 
 }
 
+
+void IsosimEngine::inverseD(void) {
+
+    // IsosimEngine::ID_Input input(forceVecToInput(latestForce));
+
+    std::cout << idSolver->getName() << std::endl;
+
+}
 
 
 IsosimEngine::ID_Input IsosimEngine::forceVecToInput (SimTK::Vec3 forceVector) {

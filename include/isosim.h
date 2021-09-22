@@ -58,6 +58,8 @@ class IsosimEngine {
         void set_state(int state);
 
         void testPointActuator(void); //delete this //TODO
+
+        ~IsosimEngine();
     
     private:
 
@@ -66,12 +68,16 @@ class IsosimEngine {
         bool generateIDModel(void); //imports/configures inverse dynamics model
         OpenSim::Model IDModel;
         OpenSim::InverseDynamicsSolver* idSolver;
+        //point force used to represent force exterted on end effector
+        OpenSim::PointActuator endEffector;
 
         bool generateFDModel(void); //imports/configures forward dynamics model
         OpenSim::Model FDModel;
 
+        //performs one iteration of forward dynamics
         void forwardD(void);
 
+        //performs one iteration of inverse dynamics
         void inverseD(void);
 
         void step(void);
@@ -86,7 +92,7 @@ class IsosimEngine {
         ID_Input forceVecToInput (SimTK::Vec3 forceVector);
 
 
-        ~IsosimEngine();
+        
 };
 
 
