@@ -312,7 +312,7 @@ bool IsosimEngine::generateIDModel(void) {
     endEffector.set_point(wristPointLoc);
     endEffector.set_point_is_global(false); //point coordinates are relative to radius
     endEffector.set_force_is_global(true); //force coordinates will be in ground frame
-    endEffector.set_direction(SimTK::Vec3(1,0,1));   //x is front, y is up, 
+    endEffector.set_direction(SimTK::Vec3(1,0,0));   //x is front, y is up, 
     std::cout << endEffector.get_direction() << "<-- eE dir\n";//endEffector.set_direction(SimTK::Vec3(1,1,1));
     double optimalEndForce = 100; //N
     endEffector.setOptimalForce(optimalEndForce);
@@ -325,7 +325,7 @@ bool IsosimEngine::generateIDModel(void) {
     std::cout << endEffector.get_appliesForce() << "<-- that end effector is applying force---------------------\n";
 
     Vector endEffectorControls(1);
-    endEffectorControls(0) = 1;// 0 for realtime (will be added later)
+    endEffectorControls(0) = 1*0;// 0 for realtime (will be added later)
     
     
     //add control values
@@ -340,30 +340,7 @@ bool IsosimEngine::generateIDModel(void) {
     udotActuatorsCombination.dump("Accelerations due to actuator");
 
 
-    // OpenSim::Manager tmpmanager(IDModel); std::cout << "probs\n";
-    // tmpmanager.setIntegratorAccuracy(1.0e-3);
-    // state1.getU().dump("initial U");
-    // state1.setTime(initialTime);
-    // tmpmanager.initialize(state1); tmpmanager.integrate(finalTime); 
-    // std::cout << "i'll eat my hat\n\n\n";
-    // return false; //get rid of this line
-
-    // // ------------------ Provide control signals for pointActuator ----------------
-    // Vector endEffectorControls(1); // input to addInControl should be a Vector
-    // endEffectorControls(0) = 1.0; // axis already defined when initializing
-
-    // Vector endEffectorVector(3); // to print out the whole force vector
-    // for (int i = 0; i < 3; i++){
-    //     endEffectorVector(i) = 1;
-    // }
-    // endEffectorVector.dump("Forces applied by the point Actuator:");
-
-    // // Add control values and set their values
-    // Vector modelControls  = IDModel.getDefaultControls();
-    // endEffector.addInControls(endEffectorControls, modelControls);
-    // IDModel.setDefaultControls(modelControls);
-
-    // endEffector.addInControls(forceController,IDModel.getDefaultControls());
+   
 
 
 
@@ -438,9 +415,9 @@ bool IsosimEngine::generateIDModel(void) {
     manager.setIntegratorAccuracy(timestep);
 
     //lock joints
-    // IDshoulderJoint.getCoordinate().setLocked(si,true);
+    IDshoulderJoint.getCoordinate().setLocked(si,true);
     IDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
-    // IDelbowJoint.getCoordinate().setLocked(si, true);
+    IDelbowJoint.getCoordinate().setLocked(si, true);
 
 
     // IDForceFromROS.setAppliesForce(si, true);    //uncomment this
@@ -473,9 +450,9 @@ bool IsosimEngine::generateIDModel(void) {
     IDModel.getVisualizer().show(state_);
     std::cout << "... or maybe it's here\n";
 
-    //test code
-    // IDModel.getComponent("forceFromROS").printSocketInfo(); return false;
-    //end test code
+   
+   //test code
+//    std::cout << si.State();
 
 
     //perform ID
@@ -483,12 +460,31 @@ bool IsosimEngine::generateIDModel(void) {
     // double mobsize = IDModel.getMultibodySystem().getMobilityForces(state_, Stage::Dynamics).size();
     SimTK::Vector residualMobilityForces;
     double simTime = 0;
-    // double& eeOptimalForce = endEffector.upd_optimal_force();
-    while (simTime < finalTime) {
-        // state_.setTime(simTime);
-        // std::cout << "running  " << simTime << std::endl;
+    //state variables
+    // SimTK::Vector stateQ = state_.getQ();
+    // SimTK::Vector stateU = state_.getU();
+    // SimTK::Vector stateUdot = state_.getUDot();
+    // stateQ.dump("initial Q");
 
-        integrator_->stepBy(timestep);
+
+    SimTK::Vec3 reverseDirection = endEffector.get_direction() * -1;
+    bool reversed = false;
+
+    clock_t timeAtStart = clock();
+    while (simTime < finalTime) {
+        
+        if ( (reversed == false) && (simTime > finalTime / 2) ) {
+            endEffector.set_direction(reverseDirection);
+            reversed==true;
+        }
+        endEffectorControls(0) = simTime / finalTime;
+        Vector modelControls = IDModel.getDefaultControls();
+        // modelControls.dump("old mod controls");
+        endEffector.addInControls(endEffectorControls,modelControls);
+        // modelControls.dump("new mod controls");
+        IDModel.setControls(state_, modelControls);
+
+
         IDModel.getMultibodySystem().realize(state_, Stage::Dynamics);
         if (simTime < initialTime+(timestep*3)) {
             simTime += timestep;
@@ -497,15 +493,20 @@ bool IsosimEngine::generateIDModel(void) {
         // if (simTime > 0.9) {
         //     std::cout << "simtime: " << simTime << "\nfinaltime: " << finalTime << "\n modelcontr: " << simTime/finalTime << "\n";
         // }
-        // endEffectorControls(0) = timestep / finalTime;
-        // Vector modelControls = IDModel.getDefaultControls();
-        // modelControls.dump("old mod controls");
-        // endEffector.addInControls(endEffectorControls,modelControls);
-        // modelControls.dump("new mod controls");
-        // IDModel.setDefaultControls(modelControls);
+        
 
-        endEffector.set_optimal_force(simTime/finalTime * 100);
+        // endEffector.setOptimalForce(simTime/finalTime * 100);
+        
+         //print initial accelerations to test
+         #define DELETETHIS
+        #ifndef DELETETHIS
+            std::cout << endEffector.getActuation(state_) << "<---- prev actuation\n";
 
+            IDModel.computeStateVariableDerivatives(state_);
+            Vector udotActuatorsCombinationRT = state_.getUDot();
+            std::cout << endEffector.get_appliesForce() << "<-- that end effector is applying force---------------------\n";
+            udotActuatorsCombinationRT.dump("Accelerations due to actuator rt");
+        #endif
         // std::cout << "stepped  " << simTime << std::endl; 
         const Vector& appliedMobilityForces = 
                 IDModel.getMultibodySystem().getMobilityForces(state_, Stage::Dynamics);
@@ -518,10 +519,16 @@ bool IsosimEngine::generateIDModel(void) {
                     // state_,appliedMobilityForces,appliedBodyForces,testUdot, residualMobilityForces);
         residualMobilityForces = idSolver.solve(state_,testUdot,appliedMobilityForces,appliedBodyForces);
         simTime+= timestep;
-        std::cout << residualMobilityForces << std::endl;
-
+        std::cout << "residualmobforces: " << residualMobilityForces << " at time: " << simTime << std::endl;
+        
+        //below function calls only necessary for visualising over time
+        integrator_->stepBy(timestep);
+        state_ = integrator_->getAdvancedState();
         IDModel.getVisualizer().show(state_);
+        // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     }
+    clock_t timeAtEnd = clock();
+    std::cout << "integrated from " << initialTime << " to " << finalTime << " seconds  in " << (timeAtEnd - timeAtStart)*1000/CLOCKS_PER_SEC << " milliseconds\n";
     #else //NOT REALTIME
     // Integrate from initial time to final time
     std::cout << "commencing non-realtime simulation\n";
@@ -530,13 +537,13 @@ bool IsosimEngine::generateIDModel(void) {
     manager.initialize(si);
     std::cout<<"\nIntegrating from "<<initialTime<<" to "<<finalTime<<std::endl;
     manager.integrate(finalTime);
-    #endif 
+     
     auto forcesTable = forceRep->getForcesTable();
     forceRep->getForceStorage().print("forcestorage.mot");
 
     // std::string forceFilename
     OpenSim::STOFileAdapter::write(forcesTable, "forces.sto");
-    
+    #endif
     //delete above
 
 
