@@ -65,7 +65,7 @@ class IsosimEngine {
         // static SimTK::Vec<3,double> latestForce;
         bool generateIDModel(void); //imports/configures inverse dynamics model
         OpenSim::Model IDModel;
-        OpenSim::ExternalForce IDForceFromROS;
+        OpenSim::InverseDynamicsSolver* idSolver;
 
         bool generateFDModel(void); //imports/configures forward dynamics model
         OpenSim::Model FDModel;
@@ -75,6 +75,18 @@ class IsosimEngine {
         void inverseD(void);
 
         void step(void);
+
+        struct ID_Input {
+
+            time_t timestamp;
+            double forceMag;
+            SimTK::Vec3 forceDirection;
+        };
+
+        ID_Input forceVecToInput (SimTK::Vec3 forceVector);
+
+
+        ~IsosimEngine();
 };
 
 

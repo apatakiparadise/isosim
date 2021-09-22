@@ -42,11 +42,7 @@ int main(void) {
 
     IsosimEngine engine;
 
-    // engine.testPointActuator();
-
-    // while(1) {
-    //     //do nothing
-    // }
+   
 
     engine.init();
 
@@ -266,7 +262,7 @@ bool IsosimEngine::generateIDModel(void) {
 
     // Define the initial and final simulation times //SHOULD BECOME OBSELETE IN REALTIME
     double initialTime = 0.0;
-    double finalTime = 30.00 / 30;
+    double finalTime = 30.00;// / 30;
     const double timestep = 1e-3 * 50;
 
     //import model
@@ -342,7 +338,8 @@ bool IsosimEngine::generateIDModel(void) {
 
 
 
-    OpenSim::InverseDynamicsSolver idSolver(IDModel);
+    
+    
     /////////////////////////////////////////////
     // DEFINE CONSTRAINTS IMPOSED ON THE MODEL //
     /////////////////////////////////////////////
@@ -377,27 +374,17 @@ bool IsosimEngine::generateIDModel(void) {
     IDModel.getVisualizer().show(state_);
 
    
-   //test code
-//    std::cout << si.State();
-
-
-    //perform ID
-    
-    // double mobsize = IDModel.getMultibodySystem().getMobilityForces(state_, Stage::Dynamics).size();
     SimTK::Vector residualMobilityForces;
     double simTime = 0;
-    //state variables
-    // SimTK::Vector stateQ = state_.getQ();
-    // SimTK::Vector stateU = state_.getU();
-    // SimTK::Vector stateUdot = state_.getUDot();
-    // stateQ.dump("initial Q");
-
+    
 
     SimTK::Vec3 reverseDirection = endEffector.get_direction() * -1;
     bool reversed = false;
 
     clock_t timeAtStart = clock();
+    clock_t currentTime = timeAtStart;
     while (simTime < finalTime) {
+        currentTime = clock();
         
         if ( (reversed == false) && (simTime > finalTime / 2) ) {
             endEffector.set_direction(reverseDirection);
@@ -424,19 +411,23 @@ bool IsosimEngine::generateIDModel(void) {
 
         SimTK::Vector_<SimTK::SpatialVec> appliedBodyForces(IDModel.getMultibodySystem().getRigidBodyForces(state_, SimTK::Stage::Dynamics));
 
-        residualMobilityForces = idSolver.solve(state_,testUdot,appliedMobilityForces,appliedBodyForces);
+        OpenSim::InverseDynamicsSolver solver(IDModel);
+        idSolver = &solver;
+        residualMobilityForces = idSolver->solve(state_,testUdot,appliedMobilityForces,appliedBodyForces);
 
 
         std::cout << "residualmobforces: " << residualMobilityForces << " at time: " << simTime << std::endl;
         
 
         simTime+= timestep;
-        //below function calls only necessary for visualising over time
+        //below function calls only necessary for visualising over time (and they don't work)
         integrator_->stepBy(timestep);
         state_ = integrator_->getAdvancedState();
         IDModel.getVisualizer().show(state_);
         // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    }
+
+    } //end while loop
+
     clock_t timeAtEnd = clock();
     std::cout << "integrated from " << initialTime << " to " << finalTime << " seconds  in " << (timeAtEnd - timeAtStart)*1000/CLOCKS_PER_SEC << " milliseconds\n";
     #else //NOT REALTIME
@@ -494,6 +485,33 @@ void IsosimEngine::step(void) {
 }
 
 
+
+IsosimEngine::ID_Input IsosimEngine::forceVecToInput (SimTK::Vec3 forceVector) {
+
+    IsosimEngine::ID_Input input;
+
+    input.forceMag = sqrt(~forceVector * forceVector);
+    input.forceDirection = forceVector / input.forceMag;
+
+    return input;
+
+}
+
+
+
+
+
+
+
+
+IsosimEngine::~IsosimEngine() {
+
+    delete[] idSolver;
+}
+
+
+
+/////TEST FUNCTION (OBSOLETE)
 
 void IsosimEngine::testPointActuator(void) {
 
@@ -557,4 +575,11 @@ void IsosimEngine::testPointActuator(void) {
         return;
     }
 };
+
+
+
+
+
+
+
 // } //namespace isosim
