@@ -68,11 +68,9 @@ class IsosimEngine {
         bool generateIDModel(void); //imports/configures inverse dynamics model
         OpenSim::Model IDModel;
         OpenSim::Manager* IDmanager;
-        SimTK::Integrator* IDintegrator;
         OpenSim::InverseDynamicsSolver* idSolver;
         //point force used to represent force exterted on end effector
         OpenSim::PointActuator endEffector;
-        SimTK::State* IDstate;
         double IDsimTime;
         double IDtimestep;
 
