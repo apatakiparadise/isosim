@@ -229,6 +229,23 @@ void IsosimEngine::init(void) {
 
     generateFDModel(); //
 
+    latestForce = {10,0,0};
+    inverseD();
+    latestForce = {-10,0,0};
+    inverseD();
+    latestForce = {0,10,0};
+    inverseD();
+    latestForce = {0,-10,0};
+    inverseD();
+    latestForce = {0,0,10};
+    inverseD();
+    latestForce = {0,0,-10};
+    inverseD();
+    latestForce = {100,100,100};
+    inverseD();
+    latestForce = {-100,-100,-100};
+    inverseD();
+    latestForce = {0,0,0};
     inverseD();
 
 
@@ -264,6 +281,7 @@ bool IsosimEngine::generateIDModel(void) {
     double initialTime = 0.0;
     double finalTime = 30.00 / 30;
     const double timestep = 1e-3 * 50;
+    IDtimestep = timestep; //this should be received from control input
 
     //import model
     IDModel =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
@@ -352,8 +370,9 @@ bool IsosimEngine::generateIDModel(void) {
     IDModel.updAnalysisSet().adoptAndAppend(forceRep);
 
     
-    OpenSim::Manager manager(IDModel);
-    manager.setIntegratorAccuracy(timestep);
+    IDmanager = new OpenSim::Manager(IDModel);
+    
+    IDmanager->setIntegratorAccuracy(timestep);
 
     //lock joints
     // IDshoulderJoint.getCoordinate().setLocked(si,true);
@@ -368,19 +387,31 @@ bool IsosimEngine::generateIDModel(void) {
     //REALTIME STUFF BELOW
     std::cout << "--------------------------ENTER REALTIME MODE--------------------\n";
     si.setTime(initialTime);
-    manager.initialize(si);
+    IDmanager->initialize(si);
     //get engine properties
-    SimTK::Integrator* integrator_ = &manager.getIntegrator();
-    SimTK::State state_ = integrator_->getAdvancedState();
+    SimTK::Integrator* integrator_ = &IDmanager->getIntegrator();
+    // IDintegrator = integrator_;//maybe not needed
+    
+    // *IDstate =  integrator_->getAdvancedState();
+    SimTK::State state_ =  integrator_->getAdvancedState();
+    // IDstate = new state_;
+    std::cout << "about to create newstate\n";
+    SimTK::State* newState = new SimTK::State(state_);
+    std::cout << "it wasn't puerto rico\n";
+    // IDstate = newState;
     IDModel.getVisualizer().show(state_);
 
    
     SimTK::Vector residualMobilityForces;
     double simTime = 0;
-    
+    IDsimTime = 0;
 
     SimTK::Vec3 reverseDirection = endEffector.get_direction() * -1;
     bool reversed = false;
+
+    OpenSim::InverseDynamicsSolver* solver = new OpenSim::InverseDynamicsSolver(IDModel);
+    idSolver = solver;
+    idSolver->setName("id_solver");
 
     clock_t timeAtStart = clock();
     clock_t currentTime = timeAtStart;
@@ -412,9 +443,7 @@ bool IsosimEngine::generateIDModel(void) {
 
         SimTK::Vector_<SimTK::SpatialVec> appliedBodyForces(IDModel.getMultibodySystem().getRigidBodyForces(state_, SimTK::Stage::Dynamics));
 
-        OpenSim::InverseDynamicsSolver solver(IDModel);
-        idSolver = &solver;
-        idSolver->setName("id_solver");
+       
         residualMobilityForces = idSolver->solve(state_,testUdot,appliedMobilityForces,appliedBodyForces);
 
 
@@ -487,11 +516,54 @@ void IsosimEngine::step(void) {
 }
 
 
-void IsosimEngine::inverseD(void) {
+IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
 
-    // IsosimEngine::ID_Input input(forceVecToInput(latestForce));
+    IsosimEngine::ID_Input input(forceVecToInput(latestForce)); //need to make this threadsafe eventually
+    IsosimEngine::ID_Output output;
+    output.timestamp = input.timestamp;
 
-    std::cout << idSolver->getName() << std::endl;
+
+
+
+    SimTK::Integrator* integrator_ = &IDmanager->getIntegrator();
+
+    SimTK::State state_ = integrator_->getAdvancedState();
+    IDModel.getMultibodySystem().realize(state_, Stage::Dynamics); //just for adding in controls (will do this again)
+
+    Vector controls(1);
+    controls(0) = input.forceMag;
+
+    SimTK::Vec3 direction = input.forceDirection;
+    endEffector.set_direction(direction);
+
+    Vector modelControls = IDModel.getDefaultControls();
+    endEffector.addInControls(controls, modelControls);
+
+    IDModel.setControls(state_,modelControls);
+
+
+    // if (IDsimTime < 3) {
+    //     //need sufficient data to calculate time derivatives
+    //     output.valid = false;
+    //     IDsimTime += IDtimestep;
+    //     return output;
+    // }
+    IDModel.getMultibodySystem().realize(state_, Stage::Dynamics);
+
+    const Vector& appliedMobilityForces = 
+                IDModel.getMultibodySystem().getMobilityForces(state_, Stage::Dynamics);
+
+    const SimTK::Vector Udot = Test::randVector(state_.getNU())*0; //zero for isometric
+
+    SimTK::Vector_<SimTK::SpatialVec> appliedBodyForces(IDModel.getMultibodySystem().getRigidBodyForces(state_, SimTK::Stage::Dynamics));
+
+    output.residualMobilityForces = idSolver->solve(state_,Udot,appliedMobilityForces,appliedBodyForces);
+
+    IDsimTime += IDtimestep; //redundant
+
+    std::cout << "residualmob: " << output.residualMobilityForces << " from forcevec: " <<  latestForce << "\n magnitude: " << input.forceMag << " and direction: " << input.forceDirection << std::endl;
+    output.valid = true;
+    return output;
 
 }
 
@@ -501,7 +573,11 @@ IsosimEngine::ID_Input IsosimEngine::forceVecToInput (SimTK::Vec3 forceVector) {
     IsosimEngine::ID_Input input;
 
     input.forceMag = sqrt(~forceVector * forceVector);
-    input.forceDirection = forceVector / input.forceMag;
+    if (input.forceMag == 0) {
+        input.forceDirection = {1,1,1}; //no force anyway
+    } else {
+        input.forceDirection = forceVector / input.forceMag;
+    }
 
     return input;
 
@@ -517,6 +593,9 @@ IsosimEngine::ID_Input IsosimEngine::forceVecToInput (SimTK::Vec3 forceVector) {
 IsosimEngine::~IsosimEngine() {
 
     delete[] idSolver;
+    delete[] IDstate;
+    delete[] IDmanager;
+
 }
 
 
