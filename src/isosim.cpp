@@ -295,7 +295,16 @@ bool IsosimEngine::generateIDModel(void) {
     const OpenSim::JointSet& IDjointset = IDModel.get_JointSet();
     const OpenSim::Joint& IDshoulderJoint = IDjointset.get("r_shoulder");
     const OpenSim::Coordinate& IDshoulderelevcoord = IDshoulderJoint.getCoordinate();
- 
+    
+    //test (delete)
+        // const OpenSim::CustomJoint& idcustomjoint = IDjointset.getComponent<OpenSim::CustomJoint>("r_shoulder");
+        // std::cout << idcustomjoint.getName();
+        // for (const auto& compList : IDModel.getComponentList<OpenSim::Joint>()) {
+            // std::cout << compList.getName() << std::endl;
+        // }
+        
+
+    //end test (delete)
     const OpenSim::Joint& IDelbowJoint = IDjointset.get("r_elbow");
     const OpenSim::Coordinate& IDelbowflex = IDelbowJoint.getCoordinate();
 
@@ -494,11 +503,24 @@ bool IsosimEngine::generateFDModel(void) {
     }
     double initialTime = 0;
 
-    //get joints
-    const OpenSim::JointSet& FDjointset = FDModel.get_JointSet();
-    const OpenSim::Joint& FDshoulderJoint   = FDjointset.get("r_shoulder");
-    const OpenSim::Joint& FDelbowJoint = FDjointset.get("r_elbow");
+    //get bodies
+    const OpenSim::BodySet& FDbodyset = FDModel.get_BodySet();
+    const OpenSim::Body& FDbasebod = FDbodyset.get("base");
+    const OpenSim::Body& FDhumerusbod = FDbodyset.get("r_humerus");
+    const OpenSim::Body& FDradiusbod = FDbodyset.get("r_ulna_radius_hand"); //not used here
 
+    //get joints
+
+    const OpenSim::JointSet& FDjointset = FDModel.get_JointSet();
+
+    // auto& should = FDjointset.getComponent("r_shoulder");
+    // std::cout << "should: " << should.getName() << std::endl;
+    FDModel.initSystem(); //just so we can get the right component
+    const OpenSim::CustomJoint& FDshoulderCustomJoint =  FDModel.getComponent<OpenSim::CustomJoint>("/jointset/r_shoulder");
+
+    // const OpenSim::Joint& FDshoulderJoint   = FDjointset.get("r_shoulder");
+    const OpenSim::Joint& FDelbowJoint = FDjointset.get("r_elbow");
+    
     //get muscles and disable
     const OpenSim::Set<OpenSim::Muscle>& muscleSet =  FDModel.getMuscles();
     for (int i=0; i < muscleSet.getSize(); i++) {
@@ -506,7 +528,14 @@ bool IsosimEngine::generateFDModel(void) {
     }
 
     //add torque actuators (to be controlled by ID input)
-    FDshoulderTorque.set
+    SimTK::Vec3 FDshoulderAxis = FDshoulderCustomJoint.getSpatialTransform().get_rotation1().getAxis();
+    std::cout << FDshoulderAxis << "<-- this is the shoulder axis rot1\n";
+    FDshoulderTorque.set_bodyA("base");
+    FDshoulderTorque.set_bodyB("r_humerus");
+    FDshoulderTorque.set_torque_is_global(false);
+    FDshoulderTorque.setAxis(FDshoulderAxis);
+
+
 
     //initialise model and get state
     FDModel.setUseVisualizer(true);
@@ -522,7 +551,8 @@ bool IsosimEngine::generateFDModel(void) {
 
     FDModel.print("FDisosimModel.osim");
     FDModel.printDetailedInfo(si, std::cout);
-
+   
+   
     si.setTime(initialTime);
     FDmanager->initialize(si);
     
