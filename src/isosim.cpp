@@ -288,8 +288,8 @@ bool IsosimEngine::generateIDModel(void) {
     IDModel =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
     std::cout << IDModel.getName() << "<----------------model name\n\n";
     //setup everything
-    Vec3 grav = IDModel.get_gravity()*0;
-    IDModel.set_gravity(grav);
+    Vec3 grav = IDModel.get_gravity();//*0;
+    IDModel.set_gravity(grav); //redundant unless we change grav above
 
     //get joints
     const OpenSim::JointSet& IDjointset = IDModel.get_JointSet();
@@ -344,7 +344,7 @@ bool IsosimEngine::generateIDModel(void) {
     std::cout << endEffector.get_appliesForce() << "<-- that end effector is applying force---------------------\n";
 
     Vector endEffectorControls(1);
-    endEffectorControls(0) = 1*0;// 0 for realtime (will be added later)
+    endEffectorControls(0) = 1*0;// 0 for realtime (controls will be added back later)
     
     
     //add control values
@@ -474,7 +474,6 @@ bool IsosimEngine::generateIDModel(void) {
 
 
     
-    //TODO: get integrator and save it to class variable
 
 
     return true;
@@ -482,12 +481,52 @@ bool IsosimEngine::generateIDModel(void) {
 
 bool IsosimEngine::generateFDModel(void) {
 
-
+    std::cout << "initialising FD model\n";
     //import model
-
+    FDModel =  OpenSim::Model("Models/arm26.osim");
     //setup everything
+    try {
+        FDtimestep = IDtimestep;
+    } catch (...) {
+        std::cerr << "ID model not initialised\n";
+        std::cerr << "Exiting\n";
+        return false;
+    }
+    double initialTime = 0;
 
-    //get integrator and save it to class variable
+    //get joints
+    const OpenSim::JointSet& FDjointset = FDModel.get_JointSet();
+    const OpenSim::Joint& FDshoulderJoint   = FDjointset.get("r_shoulder");
+    const OpenSim::Joint& FDelbowJoint = FDjointset.get("r_elbow");
+
+    //get muscles and disable
+    const OpenSim::Set<OpenSim::Muscle>& muscleSet =  FDModel.getMuscles();
+    for (int i=0; i < muscleSet.getSize(); i++) {
+        muscleSet.get(i).set_appliesForce(false);
+    }
+
+    //add torque actuators (to be controlled by ID input)
+    FDshoulderTorque.set
+
+    //initialise model and get state
+    FDModel.setUseVisualizer(true);
+    SimTK::State& si = FDModel.initSystem();
+
+    
+    //create manager and save it to class variable
+    FDmanager = new OpenSim::Manager(FDModel);
+
+    FDmanager->setIntegratorAccuracy(FDtimestep);
+
+    FDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
+
+    FDModel.print("FDisosimModel.osim");
+    FDModel.printDetailedInfo(si, std::cout);
+
+    si.setTime(initialTime);
+    FDmanager->initialize(si);
+    
+    std::cout << "FDmodel generated\n";
 
     return true;
 }
@@ -514,6 +553,7 @@ IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
 
     IsosimEngine::ID_Input input(forceVecToInput(latestForce)); //need to make this threadsafe eventually
     IsosimEngine::ID_Output output;
+    output.valid = false; //change to true later if data
     output.timestamp = input.timestamp;
 
 
@@ -573,7 +613,27 @@ IsosimEngine::ID_Input IsosimEngine::forceVecToInput (SimTK::Vec3 forceVector) {
 
 
 
+IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
+    IsosimEngine::FD_Output output;
+    output.valid = false; //we'll change this to true once we have data
+    output.timestamp = input.timestamp;
+
+    if (input.valid == false) {
+        std::cout << "invalid ID output provided as input to FD\n";
+        return output;
+    }
+
+    SimTK::Integrator* integrator_ = &FDmanager->getIntegrator();
+
+    SimTK::State state_ = integrator_->getAdvancedState();
+
+
+
+
+
+
+}
 
 
 

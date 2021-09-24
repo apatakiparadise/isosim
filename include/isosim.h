@@ -71,12 +71,17 @@ class IsosimEngine {
         OpenSim::InverseDynamicsSolver* idSolver;
         //point force used to represent force exterted on end effector
         OpenSim::PointActuator endEffector;
-        double IDsimTime;
         double IDtimestep;
 
 
         bool generateFDModel(void); //imports/configures forward dynamics model
         OpenSim::Model FDModel;
+        OpenSim::Manager* FDmanager;
+        double FDtimestep; //should be same as IDtimestep
+        
+        //actuators to apply input from ID in FD model
+        OpenSim::TorqueActuator FDshoulderTorque;
+        OpenSim::TorqueActuator FDelbowTorque;
 
         struct ID_Output {
 
@@ -85,8 +90,18 @@ class IsosimEngine {
             bool valid;
         };
 
+        struct FD_Output {
+
+            time_t timestamp;
+            SimTK::Vector q;
+            SimTK::Vector u;
+            SimTK::Vector uDot;
+            bool valid;
+
+        };
+
         //performs one iteration of forward dynamics
-        void forwardD(void);
+        IsosimEngine::FD_Output forwardD(IsosimEngine::ID_Output input);
 
         //performs one iteration of inverse dynamics
         ID_Output inverseD(void);
