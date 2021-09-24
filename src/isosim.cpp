@@ -31,6 +31,10 @@ static SimTK::Vec3 latestForce;
 RosbridgeWsClient RBcppClient("localhost:9090");
 
 
+//order of joints in system state Q/Qdot/Udot vectors
+#define SHOULDER_NUM 0
+#define ELBOW_NUM 1
+
 int main(void) {
 
     //do stuff
@@ -539,7 +543,12 @@ bool IsosimEngine::generateFDModel(void) {
     FDModel.addForce(&FDshoulderTorque);
     FDModel.finalizeConnections();
     
-    Vector torquecontrols;///TODO
+    SimTK::Vector shoulderControls(1);///TODO: test this
+    shoulderControls(0) = 0;
+
+    SimTK::Vector modelControls = FDModel.getDefaultControls();
+    FDshoulderTorque.addInControls(shoulderControls,modelControls);
+
 
 
     //initialise model and get state
@@ -663,8 +672,18 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
     SimTK::State state_ = integrator_->getAdvancedState();
 
+    //possible need to realize to dynamics here. But how will we fd after?
 
+    Vector shoulderControls_(1);
+    shoulderControls_(0) = input.residualMobilityForces(SHOULDER_NUM);
+    Vector modelControls_ = FDModel.getDefaultControls();
+    FDshoulderTorque.addInControls(shoulderControls_,modelControls_);
 
+    //TODO: repeat for elbow
+
+    FDModel.setControls(state_,modelControls_);
+    
+    integrator_->stepBy(FDtimestep);
 
 
 
