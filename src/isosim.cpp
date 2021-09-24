@@ -534,7 +534,12 @@ bool IsosimEngine::generateFDModel(void) {
     FDshoulderTorque.set_bodyB("r_humerus");
     FDshoulderTorque.set_torque_is_global(false);
     FDshoulderTorque.setAxis(FDshoulderAxis);
+    FDshoulderTorque.setOptimalForce(100) ; // N.m (maximum torque supposedly)
 
+    FDModel.addForce(&FDshoulderTorque);
+    FDModel.finalizeConnections();
+    
+    Vector torquecontrols;///TODO
 
 
     //initialise model and get state
