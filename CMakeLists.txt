@@ -90,7 +90,7 @@ foreach(osimModel ${OSIM_MODELS})
         ARGS -E copy
         ${osimModel}
         ${CMAKE_BINARY_DIR}/Models/${osimModelName})
-    message(STATUS hi ${CMAKE_BINARY_DIR}/Models/${osimModelName})
+    message(STATUS hi: ${CMAKE_BINARY_DIR}/Models/${osimModelName})
 endforeach(osimModel)
 
 

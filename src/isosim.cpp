@@ -15,6 +15,8 @@
 #include <ctime>
 
 
+#define LOGGING
+
 
 using namespace isosim;
 using namespace SimTK;
@@ -233,27 +235,28 @@ void IsosimEngine::init(void) {
 
     generateFDModel(); //
 
-    //test ID for various inputs
+
+    #ifdef LOGGING
+        //setup logger
+        logger.open("position.log", std::ios_base::app);
+    #endif
+
+    
+    //give an initial force
     latestForce = {10,0,0};
-    inverseD();
+    clock_t timeAtStart = clock();
+    for (double i = 0; i < 20; i+= IDtimestep) {
+        step();
+    }
+    clock_t midTime = clock();
     latestForce = {-10,0,0};
-    inverseD();
-    latestForce = {0,10,0};
-    inverseD();
-    latestForce = {0,-10,0};
-    inverseD();
-    latestForce = {0,0,10};
-    inverseD();
-    latestForce = {0,0,-10};
-    inverseD();
-    latestForce = {100,100,100};
-    inverseD();
-    latestForce = {-100,-100,-100};
-    inverseD();
-    latestForce = {0,0,0};
-    inverseD();
+    for (double i = 0; i < 20; i+= IDtimestep) {
+        step();
+    }
+    clock_t timeAtEnd = clock();
 
-
+    std::cout << "Completed forward test in " << (midTime - timeAtStart)/CLOCKS_PER_SEC << " seconds\n";
+    std::cout << "Completed backward test in " << (timeAtEnd - midTime)/CLOCKS_PER_SEC << " seconds\n";
 }
 
 int IsosimEngine::get_state(void) {
@@ -287,6 +290,7 @@ bool IsosimEngine::generateIDModel(void) {
     double finalTime = 30.00 / 30;
     const double timestep = 1e-3 * 50;
     IDtimestep = timestep; //this should be received from control input
+    currentSimTime = 0; //can be overriden by control
 
     //import model
     IDModel =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
@@ -569,6 +573,8 @@ bool IsosimEngine::generateFDModel(void) {
    
     si.setTime(initialTime);
     FDmanager->initialize(si);
+
+
     
     std::cout << "FDmodel generated\n";
 
@@ -581,15 +587,25 @@ bool IsosimEngine::generateFDModel(void) {
 void IsosimEngine::step(void) {
 
     //step id first using IsosimEngine::inverseD
+    IsosimEngine::ID_Output IDout = inverseD();
+    
 
     //get output torques in a form that is usable to the FD engine
 
     //step fd using IsosimEngine::forwardD
-
+    IsosimEngine::FD_Output FDout = forwardD(IDout);
     //publish using comms::publisher
+
+    //TODO ^^
+
     // (maybe this last one can be done by a callback function)
     // (so we just set the latest state and that gets transmitted to commshub)
 
+    #ifdef LOGGING
+        logger << FDout.timestamp << "   " << FDout.q << std::endl;
+    #endif
+
+    currentSimTime += IDtimestep; //shouldn't be necessary with control input //TODO this
 }
 
 
@@ -643,6 +659,7 @@ IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
 IsosimEngine::ID_Input IsosimEngine::forceVecToInput (SimTK::Vec3 forceVector) {
 
     IsosimEngine::ID_Input input;
+    input.timestamp = currentSimTime;
 
     input.forceMag = sqrt(~forceVector * forceVector);
     if (input.forceMag == 0) {
@@ -668,11 +685,19 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
         return output;
     }
 
+    std::cout << "forwardD\n";
+
     SimTK::Integrator* integrator_ = &FDmanager->getIntegrator();
+
+    
 
     SimTK::State state_ = integrator_->getAdvancedState();
 
+
+
+
     //possible need to realize to dynamics here. But how will we fd after?
+    FDModel.getMultibodySystem().realize(state_, Stage::Velocity);
 
     Vector shoulderControls_(1);
     shoulderControls_(0) = input.residualMobilityForces(SHOULDER_NUM);
@@ -682,8 +707,19 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     //TODO: repeat for elbow
 
     FDModel.setControls(state_,modelControls_);
-    
+
+
     integrator_->stepBy(FDtimestep);
+
+    FDModel.getVisualizer().show(state_);
+
+
+    output.q = state_.getQ();
+    
+
+    return output;
+
+    
 
 
 

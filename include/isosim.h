@@ -15,6 +15,9 @@
 
 #include "IsometricExternalForce.h"
 
+
+#include <fstream>
+
 #define ISOSIM_STANDBY 0
 #define ISOSIM_RUN 1
 #define ISOSIM_END_EXPERIMENT 4
@@ -78,6 +81,7 @@ class IsosimEngine {
         OpenSim::Model FDModel;
         OpenSim::Manager* FDmanager;
         double FDtimestep; //should be same as IDtimestep
+        double currentSimTime;
         
         //actuators to apply input from ID in FD model
         OpenSim::TorqueActuator FDshoulderTorque;
@@ -85,14 +89,14 @@ class IsosimEngine {
 
         struct ID_Output {
 
-            time_t timestamp;
+            double timestamp;
             SimTK::Vector residualMobilityForces;
             bool valid;
         };
 
         struct FD_Output {
 
-            time_t timestamp;
+            double timestamp; //should this be a time_t or not?
             SimTK::Vector q;
             SimTK::Vector u;
             SimTK::Vector uDot;
@@ -110,7 +114,7 @@ class IsosimEngine {
 
         struct ID_Input {
 
-            time_t timestamp;
+            double timestamp;
             double forceMag;
             SimTK::Vec3 forceDirection;
         };
@@ -119,7 +123,7 @@ class IsosimEngine {
 
         
 
-
+        std::ofstream logger;
         
 };
 
