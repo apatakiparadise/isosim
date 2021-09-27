@@ -243,20 +243,20 @@ void IsosimEngine::init(void) {
 
     
     //give an initial force
-    latestForce = {10,0,0};
+    latestForce = {0,0,1};
     clock_t timeAtStart = clock();
     for (double i = 0; i < 20; i+= IDtimestep) {
         step();
     }
     clock_t midTime = clock();
-    latestForce = {-10,0,0};
+    latestForce = {0,0,0};
     for (double i = 0; i < 20; i+= IDtimestep) {
         step();
     }
     clock_t timeAtEnd = clock();
 
-    std::cout << "Completed forward test in " << (midTime - timeAtStart)/CLOCKS_PER_SEC << " seconds\n";
-    std::cout << "Completed backward test in " << (timeAtEnd - midTime)/CLOCKS_PER_SEC << " seconds\n";
+    std::cout << "Completed forward test in " << (midTime - timeAtStart)*1000/CLOCKS_PER_SEC << " seconds\n";
+    std::cout << "Completed backward test in " << ((timeAtEnd - midTime)*1000/CLOCKS_PER_SEC) << " seconds\n";
 }
 
 int IsosimEngine::get_state(void) {
@@ -511,6 +511,11 @@ bool IsosimEngine::generateFDModel(void) {
     }
     double initialTime = 0;
 
+    //set gravity (for debugging)
+    Vec3 grav = FDModel.get_gravity()*0;
+    FDModel.set_gravity(grav); //redundant unless we change grav above
+
+
     //get bodies
     const OpenSim::BodySet& FDbodyset = FDModel.get_BodySet();
     const OpenSim::Body& FDbasebod = FDbodyset.get("base");
@@ -552,8 +557,6 @@ bool IsosimEngine::generateFDModel(void) {
 
     SimTK::Vector modelControls = FDModel.getDefaultControls();
     FDshoulderTorque.addInControls(shoulderControls,modelControls);
-
-
 
     //initialise model and get state
     FDModel.setUseVisualizer(true);
@@ -685,14 +688,15 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
         return output;
     }
 
-    std::cout << "forwardD\n";
+    std::cout << "INPUT PROPERTIES\n resmob: " << input.residualMobilityForces << "timestamp: " << input.timestamp << "valid?: " << input.valid << std::endl;
 
     SimTK::Integrator* integrator_ = &FDmanager->getIntegrator();
 
     
 
-    SimTK::State state_ = integrator_->getAdvancedState();
-
+    const SimTK::State& state_ = integrator_->getAdvancedState(); //this needs to be a pointer, since we plan on doing fun things to it
+    
+    
 
 
 
@@ -708,6 +712,7 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
     FDModel.setControls(state_,modelControls_);
 
+    FDModel.getMultibodySystem().realizeTopology();
 
     integrator_->stepBy(FDtimestep);
 
@@ -715,7 +720,8 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
 
     output.q = state_.getQ();
-    
+    // output.u = state_.getU();
+    // output.uDot = state_.getUDot();
 
     return output;
 
