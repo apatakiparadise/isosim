@@ -122,6 +122,8 @@ class IsosimEngine {
         ID_Input forceVecToInput (SimTK::Vec3 forceVector);
 
         
+        //COMBINED FD/ID - performs forward dynamics on a non-static model while still calculating joint torques
+        IsosimEngine::FD_Output forwardInverseD(void);
 
         std::ofstream logger;
         

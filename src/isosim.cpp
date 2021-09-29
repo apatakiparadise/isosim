@@ -16,7 +16,7 @@
 
 
 #define LOGGING
-
+#undef IDFD //not doing both currently
 
 using namespace isosim;
 using namespace SimTK;
@@ -253,10 +253,15 @@ void IsosimEngine::init(void) {
         step();
     }
     clock_t midTime = clock();
-    latestForce = {0,0,0};
+    latestForce = {1,0,0};
     for (double i = 0; i < 20; i+= IDtimestep) {
         step();
     }
+    latestForce = {0,1,0};
+    for (double i = 0; i < 20; i+= IDtimestep) {
+        step();
+    }
+    
     clock_t timeAtEnd = clock();
 
     std::cout << "Completed forward test in " << (midTime - timeAtStart)*1000/CLOCKS_PER_SEC << " seconds\n";
@@ -300,7 +305,7 @@ bool IsosimEngine::generateIDModel(void) {
     IDModel =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
     std::cout << IDModel.getName() << "<----------------model name\n\n";
     //setup everything
-    Vec3 grav = IDModel.get_gravity();//*0;
+    Vec3 grav = IDModel.get_gravity()*0; //end effector force is the net force (so includes gravity)
     IDModel.set_gravity(grav); //redundant unless we change grav above
 
     //get joints
@@ -396,10 +401,12 @@ bool IsosimEngine::generateIDModel(void) {
     
     IDmanager->setIntegratorAccuracy(timestep);
 
-    //lock joints
-    IDshoulderJoint.getCoordinate().setLocked(si,true);
+    //lock joints - Only if we're performing ID first, not necessary for the direct FD method
     IDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
+    #ifdef IDFD
     IDelbowJoint.getCoordinate().setLocked(si, true);
+    IDshoulderJoint.getCoordinate().setLocked(si,true);
+    #endif
 
     IDModel.print("isosimModel.osim");
     // Print out details of the model
@@ -446,6 +453,7 @@ bool IsosimEngine::generateIDModel(void) {
     idSolver = solver;
     idSolver->setName("id_solver");
 
+    /*
     clock_t timeAtStart = clock();
     clock_t currentTime = timeAtStart;
     while (simTime < finalTime) {
@@ -492,9 +500,11 @@ bool IsosimEngine::generateIDModel(void) {
 
     
     } //end while loop
+    
 
-    clock_t timeAtEnd = clock();
+    clock_t timeAtEnd = clock();   
     std::cout << "integrated from " << initialTime << " to " << finalTime << " seconds  in " << (timeAtEnd - timeAtStart)*1000/CLOCKS_PER_SEC << " milliseconds\n";
+    */
     #else //NOT REALTIME
     // Integrate from initial time to final time
     std::cout << "commencing non-realtime simulation\n";
@@ -638,6 +648,7 @@ bool IsosimEngine::generateFDModel(void) {
 
 void IsosimEngine::step(void) {
 
+    #ifdef IDFD
     //step id first using IsosimEngine::inverseD
     IsosimEngine::ID_Output IDout = inverseD();
     
@@ -646,6 +657,10 @@ void IsosimEngine::step(void) {
 
     //step fd using IsosimEngine::forwardD
     IsosimEngine::FD_Output FDout = forwardD(IDout);
+    #else
+    //do the FD without bothwering with inverseD
+    IsosimEngine::FD_Output FDout = forwardInverseD();
+    #endif
     //publish using comms::publisher
 
     //TODO ^^
@@ -792,15 +807,19 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
     FDModel.getMultibodySystem().realizeTopology();
 
-
+    //step simulation
     integrator_->stepBy(FDtimestep);
 
-    FDModel.getVisualizer().show(state_);
+    SimTK::State newState_ = integrator_->getAdvancedState();
 
+    FDModel.getVisualizer().show(newState_);
 
-    output.q = state_.getQ();
-    // output.u = state_.getU();
-    // output.uDot = state_.getUDot();
+    //realize again so we can get state variables (can reduce the stage later if we decide we don't need U/Udot -- //TODO)
+    FDModel.getMultibodySystem().realize(newState_, Stage::Acceleration);
+
+    output.q = newState_.getQ();
+    output.u = newState_.getU();
+    output.uDot = newState_.getUDot();
 
     return output;
 
@@ -810,6 +829,46 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
 }
 
+
+IsosimEngine::FD_Output IsosimEngine::forwardInverseD(void) {
+
+    IsosimEngine::ID_Input input(forceVecToInput(latestForce)); //need to make this threadsafe eventually
+
+    IsosimEngine::FD_Output output;
+    output.timestamp = input.timestamp;
+
+    SimTK::Integrator* integrator_ = &IDmanager->getIntegrator();
+    SimTK::State state_ = integrator_->getAdvancedState();
+
+    IDModel.getMultibodySystem().realize(state_,Stage::Dynamics);
+    
+    Vector controls(1);
+    controls(0) = input.forceMag / endEffector.get_optimal_force();
+
+    SimTK::Vec3 direction = input.forceDirection;
+    endEffector.set_direction(direction);
+
+    Vector modelControls = IDModel.getDefaultControls();
+    endEffector.addInControls(controls, modelControls);
+
+    IDModel.setControls(state_,modelControls);
+     modelControls.dump("model controls");
+    //step FD
+    integrator_->stepBy(FDtimestep);
+    SimTK::State newState_ = integrator_->getAdvancedState();
+    IDModel.getMultibodySystem().realize(newState_, Stage::Acceleration);
+
+    IDModel.getVisualizer().show(state_);
+    output.q = newState_.getQ();
+    output.u = newState_.getU();
+    output.uDot = newState_.getUDot();
+    // std::cout << output.uDot << "<-- uDot at time -->" << output.timestamp << std::endl; 
+
+
+    output.valid = true;
+
+    return output;
+}
 
 
 
