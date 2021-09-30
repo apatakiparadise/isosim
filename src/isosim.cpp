@@ -16,7 +16,9 @@
 
 
 #define LOGGING
-#undef IDFD //not doing both currently
+
+#define IDFD
+// #undef IDFD //not doing both currently
 
 using namespace isosim;
 using namespace SimTK;
@@ -107,9 +109,9 @@ void IsosimROS::init(void) {
     RBcppClient.addClient("topic_subscriber");
     RBcppClient.subscribe("topic_subscriber", "/twistfromCMD",forceSubscriberCallback);
 
-    //publish some dataroslaunch rosbridge_server rosbridge_websocket.launch
+    //publish some data     roslaunch rosbridge_server rosbridge_websocket.launch
 
-    RBcppClient.addClient("test_publisher");
+    RBcppClient.addClient("test_publisher");  //TODO: what does this publisher client actually do? and where???
     rapidjson::Document d;
     d.SetObject();
     d.AddMember("data", "Test message from /isosimtopic", d.GetAllocator());
@@ -128,7 +130,48 @@ SimTK::Vec3 IsosimROS::get_latest_force(void) {
     return latestForce;
 }
 
+bool IsosimROS::publishState(IsosimROS::IsosimData stateData) {
 
+    if (stateData.valid == false) {
+
+        std::cout << "INVALID DATA\n";
+        return false;
+    }
+    
+    std::cout << "publishstate()\n";
+    rapidjson::Document d;
+    d.SetObject();
+
+    rapidjson::Value msg(rapidjson::kArrayType);
+    
+    //create Qarr and timestamp
+    rapidjson::Value Qarr(rapidjson::kArrayType);
+    rapidjson::Value Qx;
+    rapidjson::Value Qy;
+    rapidjson::Value Qz;
+    std::cout << "betcha it's here\n";
+    stateData.q.dump("this is our q");
+    Qx.SetDouble(stateData.q[0]); std::cout << "maybe I was wrong\n";
+    Qy.SetDouble(stateData.q[1]);
+    Qz.SetDouble(stateData.q[2]); std::cout << "but not too wrong\n";
+    Qarr.AddMember("x",Qx,d.GetAllocator());
+    Qarr.AddMember("y",Qy,d.GetAllocator());
+    Qarr.AddMember("z",Qz,d.GetAllocator());
+
+    rapidjson::Value timestamp;
+    timestamp.SetDouble(stateData.timestamp);
+
+    //add Qarr and timestamp to msg
+    msg.AddMember("Q",Qarr,d.GetAllocator());
+    msg.AddMember("time",timestamp,d.GetAllocator());
+
+
+    d.AddMember("msg",msg,d.GetAllocator());
+
+    RBcppClient.publish("/isosimtopic",d);
+    // std::cout << "published\n";
+    return true; //when should we return false? //TODO
+}
 
 // rostopic pub -r 10 /twistfromCMD geometry_msgs/Twist  "{linear:  {x: 0.1, y: 0.0, z: 0.0}, angular: {x: 0.0,y: 0.0, z: 0.0}}"
 // roslaunch rosbridge_server rosbridge_websocket.launch
@@ -663,7 +706,9 @@ void IsosimEngine::step(void) {
     IsosimEngine::FD_Output FDout = forwardInverseD();
     #endif
     //publish using comms::publisher
-
+    std::cout << "about to crash yeah\n";
+    // IsosimROS::IsosimData dat = FDoutputToIsosimData(FDout);
+    commsClient.publishState(FDoutputToIsosimData(FDout));
     //TODO ^^
 
     // (maybe this last one can be done by a callback function)
@@ -679,7 +724,7 @@ void IsosimEngine::step(void) {
 
 IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
 
-    IsosimEngine::ID_Input input(forceVecToInput(latestForce)); //need to make this threadsafe eventually
+    IsosimEngine::ID_Input input(forceVecToInput(commsClient.get_latest_force())); //need to make this threadsafe eventually
     IsosimEngine::ID_Output output;
     output.valid = false; //change to true later if data
     output.timestamp = input.timestamp;
@@ -717,7 +762,7 @@ IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
     output.residualMobilityForces = idSolver->solve(state_,Udot,appliedMobilityForces,appliedBodyForces);
 
 
-    std::cout << "residualmob: " << output.residualMobilityForces << " from forcevec: " <<  latestForce << "\n magnitude: " << input.forceMag << " and direction: " << input.forceDirection << std::endl;
+    // std::cout << "residualmob: " << output.residualMobilityForces << " from forcevec: " <<  latestForce << "\n magnitude: " << input.forceMag << " and direction: " << input.forceDirection << std::endl;
     output.valid = true;
     return output;
 
@@ -791,12 +836,12 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
             (shoulderControls_(0) < 0 && state_.getQ()[SHOULDER_NUM] < shoulderMinElev)) {
         shoulderControls_(0) = 0;
         std::cout << "MAXXXXXXXED"; 
-        while(1) {std::cout << "hi?" << state_.getQ();}
+        // while(1) {std::cout << "hi?" << state_.getQ();}
     }
     if ((elbowControls_(0) > 0 && state_.getQ()[ELBOW_NUM] > elbowMaxFlex) ||
             (elbowControls_(0) < 0 && state_.getQ()[ELBOW_NUM] < elbowMinFlex)) {
         elbowControls_(0) = 0;
-        std::cout << "MAXXXXXXXED"; while(1) {std::cout << "hey? ";}
+        // std::cout << "MAXXXXXXXED"; while(1) {std::cout << "hey? ";}
     }
 
     Vector modelControls_ = FDModel.getDefaultControls();
@@ -822,6 +867,10 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     output.u = newState_.getU();
     output.uDot = newState_.getUDot();
 
+    if (output.q.size() > 0) {
+        std::cout << "it has a size";
+        output.valid = true;
+    }
     return output;
 
     
@@ -883,6 +932,19 @@ IsosimEngine::FD_Output IsosimEngine::forwardInverseD(void) {
     return output;
 }
 
+IsosimROS::IsosimData IsosimEngine::FDoutputToIsosimData(IsosimEngine::FD_Output calculatedState) {
+
+
+    IsosimROS::IsosimData outputToRos;
+    if (calculatedState.valid == true) {
+        outputToRos.timestamp = calculatedState.timestamp;
+        outputToRos.q = calculatedState.q;
+        outputToRos.u = calculatedState.u;
+        outputToRos.uDot = calculatedState.uDot;
+        outputToRos.valid = true;
+    }
+    return outputToRos;
+}
 
 
 IsosimEngine::~IsosimEngine() {

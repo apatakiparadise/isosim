@@ -38,7 +38,17 @@ class IsosimROS {
 
         SimTK::Vec3 get_latest_force(void); //THREADSAFE? no
 
-        
+        struct IsosimData {
+
+            double timestamp; 
+            SimTK::Vector q;
+            SimTK::Vector u;
+            SimTK::Vector uDot;
+            bool valid;
+        };
+
+        bool publishState(IsosimData stateData);
+
     private:
         
         void unimplemented(void);
@@ -63,6 +73,16 @@ class IsosimEngine {
         void testPointActuator(void); //delete this //TODO
 
         ~IsosimEngine();
+
+        struct FD_Output {
+
+            double timestamp; //should this be a time_t or not?
+            SimTK::Vector q;
+            SimTK::Vector u;
+            SimTK::Vector uDot;
+            bool valid;
+
+        };
     
     private:
 
@@ -96,15 +116,7 @@ class IsosimEngine {
             bool valid;
         };
 
-        struct FD_Output {
-
-            double timestamp; //should this be a time_t or not?
-            SimTK::Vector q;
-            SimTK::Vector u;
-            SimTK::Vector uDot;
-            bool valid;
-
-        };
+        
 
         //performs one iteration of forward dynamics
         IsosimEngine::FD_Output forwardD(IsosimEngine::ID_Output input);
@@ -128,6 +140,8 @@ class IsosimEngine {
         IsosimEngine::FD_Output forwardInverseD(void);
 
         std::ofstream logger;
+
+        IsosimROS::IsosimData FDoutputToIsosimData(IsosimEngine::FD_Output calculatedState);
         
 };
 
