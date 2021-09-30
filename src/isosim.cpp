@@ -247,14 +247,14 @@ void IsosimEngine::init(void) {
 
     
     //give an initial force
-    latestForce = {0,0,1};
+    latestForce = {0,-3,0};
     clock_t timeAtStart = clock();
     for (double i = 0; i < 20; i+= IDtimestep) {
         step();
     }
     clock_t midTime = clock();
-    latestForce = {1,0,0};
-    for (double i = 0; i < 20; i+= IDtimestep) {
+    latestForce = {100,0,0};
+    for (double i = 0; i < 200; i+= IDtimestep) {
         step();
     }
     latestForce = {0,1,0};
@@ -312,18 +312,13 @@ bool IsosimEngine::generateIDModel(void) {
     const OpenSim::JointSet& IDjointset = IDModel.get_JointSet();
     const OpenSim::Joint& IDshoulderJoint = IDjointset.get("r_shoulder");
     const OpenSim::Coordinate& IDshoulderelevcoord = IDshoulderJoint.getCoordinate();
-    
-    //test (delete)
-        // const OpenSim::CustomJoint& idcustomjoint = IDjointset.getComponent<OpenSim::CustomJoint>("r_shoulder");
-        // std::cout << idcustomjoint.getName();
-        // for (const auto& compList : IDModel.getComponentList<OpenSim::Joint>()) {
-            // std::cout << compList.getName() << std::endl;
-        // }
-        
+    shoulderElevRange = {IDshoulderelevcoord.getRangeMin(), IDshoulderelevcoord.getRangeMax()};
 
-    //end test (delete)
+
     const OpenSim::Joint& IDelbowJoint = IDjointset.get("r_elbow");
     const OpenSim::Coordinate& IDelbowflex = IDelbowJoint.getCoordinate();
+
+    elbowFlexRange = {IDshoulderelevcoord.getRangeMin(), IDshoulderelevcoord.getRangeMax()};
 
     std::cout << IDelbowflex.getName() << "<----- elbowflex name \n";
 
@@ -406,6 +401,12 @@ bool IsosimEngine::generateIDModel(void) {
     #ifdef IDFD
     IDelbowJoint.getCoordinate().setLocked(si, true);
     IDshoulderJoint.getCoordinate().setLocked(si,true);
+    #else
+    IDelbowJoint.getCoordinate().setClamped(si,true);
+    IDshoulderJoint.getCoordinate().setClamped(si,true);
+    std::cout << "shoulder coord free to satisfy constraints" << IDshoulderJoint.getCoordinate().get_is_free_to_satisfy_constraints() << std::endl;
+    std::cout << "shoulder coord prescribed function" << IDshoulderJoint.getCoordinate().get_prescribed() << std::endl;
+    std::cout << "shouldercoord clamped in si " << IDshoulderJoint.getCoordinate().getClamped(si) << std::endl;
     #endif
 
     IDModel.print("isosimModel.osim");
@@ -838,8 +839,9 @@ IsosimEngine::FD_Output IsosimEngine::forwardInverseD(void) {
     output.timestamp = input.timestamp;
 
     SimTK::Integrator* integrator_ = &IDmanager->getIntegrator();
-    SimTK::State state_ = integrator_->getAdvancedState();
+    SimTK::State& state_ = integrator_->updAdvancedState();
 
+    
     IDModel.getMultibodySystem().realize(state_,Stage::Dynamics);
     
     Vector controls(1);
@@ -852,17 +854,28 @@ IsosimEngine::FD_Output IsosimEngine::forwardInverseD(void) {
     endEffector.addInControls(controls, modelControls);
 
     IDModel.setControls(state_,modelControls);
-     modelControls.dump("model controls");
+    IDModel.getMultibodySystem().realize(state_, Stage::Acceleration);//del
+
     //step FD
     integrator_->stepBy(FDtimestep);
-    SimTK::State newState_ = integrator_->getAdvancedState();
-    IDModel.getMultibodySystem().realize(newState_, Stage::Acceleration);
+
+    state_.getQ();
+    
+    SimTK::clampInPlace( shoulderElevRange(0), state_.updQ()(0),shoulderElevRange(1));
+    SimTK::clampInPlace(elbowFlexRange(0),state_.updQ()(1),elbowFlexRange(1));
+    // SimTK::State newState_ = integrator_->getAdvancedState();
+    // IDModel.getMultibodySystem().realize(newState_, Stage::Acceleration);
+
+    // IDModel.getControls(newState_).dump("new state controls");
 
     IDModel.getVisualizer().show(state_);
-    output.q = newState_.getQ();
-    output.u = newState_.getU();
-    output.uDot = newState_.getUDot();
-    // std::cout << output.uDot << "<-- uDot at time -->" << output.timestamp << std::endl; 
+    output.q = state_.getQ();
+    output.u = state_.getU();
+    output.uDot = state_.getUDot();
+
+    std::cout << latestForce << "<-- force at time -->" << output.timestamp << std::endl;
+    std::cout << output.q << "<-- Q at time -->" << output.timestamp << std::endl;
+    std::cout << output.uDot << "<-- uDot at time -->" << output.timestamp << std::endl; 
 
 
     output.valid = true;
