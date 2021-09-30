@@ -312,13 +312,13 @@ bool IsosimEngine::generateIDModel(void) {
     const OpenSim::JointSet& IDjointset = IDModel.get_JointSet();
     const OpenSim::Joint& IDshoulderJoint = IDjointset.get("r_shoulder");
     const OpenSim::Coordinate& IDshoulderelevcoord = IDshoulderJoint.getCoordinate();
-    shoulderElevRange = {IDshoulderelevcoord.getRangeMin(), IDshoulderelevcoord.getRangeMax()};
+    // shoulderElevRange = {IDshoulderelevcoord.getRangeMin(), IDshoulderelevcoord.getRangeMax()};
 
 
     const OpenSim::Joint& IDelbowJoint = IDjointset.get("r_elbow");
     const OpenSim::Coordinate& IDelbowflex = IDelbowJoint.getCoordinate();
 
-    elbowFlexRange = {IDshoulderelevcoord.getRangeMin(), IDshoulderelevcoord.getRangeMax()};
+    // elbowFlexRange = {IDshoulderelevcoord.getRangeMin(), IDshoulderelevcoord.getRangeMax()};
 
     std::cout << IDelbowflex.getName() << "<----- elbowflex name \n";
 
@@ -861,8 +861,8 @@ IsosimEngine::FD_Output IsosimEngine::forwardInverseD(void) {
 
     state_.getQ();
     
-    SimTK::clampInPlace( shoulderElevRange(0), state_.updQ()(0),shoulderElevRange(1));
-    SimTK::clampInPlace(elbowFlexRange(0),state_.updQ()(1),elbowFlexRange(1));
+    // SimTK::clampInPlace( shoulderElevRange(0), state_.updQ()(0),shoulderElevRange(1));
+    // SimTK::clampInPlace(elbowFlexRange(0),state_.updQ()(1),elbowFlexRange(1));
     // SimTK::State newState_ = integrator_->getAdvancedState();
     // IDModel.getMultibodySystem().realize(newState_, Stage::Acceleration);
 

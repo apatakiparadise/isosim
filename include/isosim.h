@@ -75,8 +75,8 @@ class IsosimEngine {
         //point force used to represent force exterted on end effector
         OpenSim::PointActuator endEffector;
         double IDtimestep;
-        SimTK::Vec2 shoulderElevRange;
-        SimTK::Vec2 elbowFlexRange;
+        // SimTK::Vec2 shoulderElevRange;
+        // SimTK::Vec2 elbowFlexRange;
 
 
         bool generateFDModel(void); //imports/configures forward dynamics model
