@@ -103,8 +103,8 @@ void IsosimROS::init(void) {
     RBcppClient.advertiseService("service_advertiser", "/isosimservice", "std_srvs/SetBool", advertiserCallback);
 
     RBcppClient.addClient("topic_advertiser");
-    RBcppClient.advertise("topic_advertiser", "/isosimtopic", "std_msgs/String");
-
+    RBcppClient.advertise("topic_advertiser", "/isosimtopic", "IsosimOutput");
+    //TODO: add this message type ^^
 
     RBcppClient.addClient("topic_subscriber");
     RBcppClient.subscribe("topic_subscriber", "/twistfromCMD",forceSubscriberCallback);
@@ -137,36 +137,38 @@ bool IsosimROS::publishState(IsosimROS::IsosimData stateData) {
         std::cout << "INVALID DATA\n";
         return false;
     }
-    
+
     std::cout << "publishstate()\n";
     rapidjson::Document d;
     d.SetObject();
 
-    rapidjson::Value msg(rapidjson::kArrayType);
+    rapidjson::Value msg(rapidjson::kObjectType);
     
     //create Qarr and timestamp
-    rapidjson::Value Qarr(rapidjson::kArrayType);
+    rapidjson::Value Qobj(rapidjson::kObjectType);
+    assert(Qobj.IsObject());
     rapidjson::Value Qx;
     rapidjson::Value Qy;
     rapidjson::Value Qz;
     std::cout << "betcha it's here\n";
     stateData.q.dump("this is our q");
-    Qx.SetDouble(stateData.q[0]); std::cout << "maybe I was wrong\n";
+    Qx.SetDouble(stateData.q[0]); 
     Qy.SetDouble(stateData.q[1]);
-    Qz.SetDouble(stateData.q[2]); std::cout << "but not too wrong\n";
-    Qarr.AddMember("x",Qx,d.GetAllocator());
-    Qarr.AddMember("y",Qy,d.GetAllocator());
-    Qarr.AddMember("z",Qz,d.GetAllocator());
-
+    // Qz.SetDouble(stateData.q[2]); std::cout << "but not too wrong\n";
+    Qobj.AddMember("x",Qx,d.GetAllocator());
+    // Qarr.PushBack("x",)
+    Qobj.AddMember("y",Qy,d.GetAllocator());
+    // Qarr.AddMember("z",Qz,d.GetAllocator());
+    std::cout << "qobj generated\n";
     rapidjson::Value timestamp;
     timestamp.SetDouble(stateData.timestamp);
 
-    //add Qarr and timestamp to msg
-    msg.AddMember("Q",Qarr,d.GetAllocator());
-    msg.AddMember("time",timestamp,d.GetAllocator());
+    //add Qarr and timestamp to d
+    d.AddMember("Q",Qobj,d.GetAllocator());
+    d.AddMember("time",timestamp,d.GetAllocator());
 
 
-    d.AddMember("msg",msg,d.GetAllocator());
+    // d.AddMember("msg",msg,d.GetAllocator());
 
     RBcppClient.publish("/isosimtopic",d);
     // std::cout << "published\n";
