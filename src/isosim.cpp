@@ -20,6 +20,8 @@
 #define IDFD
 // #undef IDFD //not doing both currently
 
+#undef DEBUG
+
 using namespace isosim;
 using namespace SimTK;
 
@@ -208,7 +210,7 @@ void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, st
 void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message)
 {
     #ifdef DEBUG
-    // std::cout << "subscriberCallback(): Message Received: " << in_message->string() << std::endl;
+    std::cout << "subscriberCallback(): Message Received: " << in_message->string() << std::endl;
     #endif
     rapidjson::Document forceD;
 
