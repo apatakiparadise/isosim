@@ -41,7 +41,7 @@ class IsosimROS {
         struct IsosimData {
 
             double timestamp; 
-            SimTK::Vector q;
+            SimTK::Vector q;    //TODO: change the properties here to be elbow and wrist transforms
             SimTK::Vector u;
             SimTK::Vector uDot;
             bool valid;
@@ -77,7 +77,7 @@ class IsosimEngine {
         struct FD_Output {
 
             double timestamp; //should this be a time_t or not?
-            SimTK::Vector q;
+            SimTK::Vector q;        //TODO: change the properties here to be elbow and wrist transforms
             SimTK::Vector u;
             SimTK::Vector uDot;
             bool valid;

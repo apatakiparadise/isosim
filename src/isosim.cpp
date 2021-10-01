@@ -705,7 +705,7 @@ void IsosimEngine::step(void) {
     IsosimEngine::FD_Output FDout = forwardInverseD();
     #endif
     //publish using comms::publisher
-    commsClient.publishState(FDoutputToIsosimData(FDout));
+    // commsClient.publishState(FDoutputToIsosimData(FDout));
     
     // (maybe this last one can be done by a callback function)
     // (so we just set the latest state and that gets transmitted to commshub)
@@ -852,7 +852,8 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     //step simulation
     integrator_->stepBy(FDtimestep);
 
-    SimTK::State newState_ = integrator_->getAdvancedState();
+    SimTK::State newState_ = integrator_->getAdvancedState(); //TODO: should this work with the State& state_ now that I changed it to a pointer?
+                                                            //TODO: actually, didn't I change it to a pointer??? I thought I called updAdvancedState().... not sure what's happening here
 
     FDModel.getVisualizer().show(newState_);
 
@@ -863,6 +864,14 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     output.u = newState_.getU();
     output.uDot = newState_.getUDot();
 
+
+    //find positions in ground frame
+    SimTK::Vec3 humerusPos = FDModel.getBodySet().get("r_humerus").getPositionInGround(newState_);
+    SimTK::Vec3 elbowPos = FDModel.getBodySet().get("r_ulna_radius_hand").getPositionInGround(newState_);
+    SimTK::Vec3 wristPos = FDModel.getMarkerSet().get("r_radius_styloid").getLocationInGround(newState_);
+    std::cout << humerusPos << "<-- a humerous position\n";
+    std::cout << elbowPos << "<-- an elbow position\n";
+    std::cout << wristPos << "a wrisky position\n";  //TODO: change the output properties to be the elbow and wrist positions, rather than Q.
     if (output.q.size() > 0) {
         output.valid = true;
     }
