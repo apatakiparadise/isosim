@@ -103,7 +103,9 @@ void IsosimROS::init(void) {
     RBcppClient.advertiseService("service_advertiser", "/isosimservice", "std_srvs/SetBool", advertiserCallback);
 
     RBcppClient.addClient("topic_advertiser");
-    RBcppClient.advertise("topic_advertiser", "/isosimtopic", "IsosimOutput");
+    RBcppClient.advertise("topic_advertiser", "/isosimtopic", "franka_panda_controller_swc/IsosimOutput");
+    // RBcppClient.advertise("topic_advertiser", "/isosimtopic", "std_msgs/String");
+
     //TODO: add this message type ^^
 
     RBcppClient.addClient("topic_subscriber");
@@ -112,12 +114,12 @@ void IsosimROS::init(void) {
     //publish some data     roslaunch rosbridge_server rosbridge_websocket.launch
 
     RBcppClient.addClient("test_publisher");  //TODO: what does this publisher client actually do? and where???
-    rapidjson::Document d;
-    d.SetObject();
-    d.AddMember("data", "Test message from /isosimtopic", d.GetAllocator());
+    // rapidjson::Document d;
+    // d.SetObject();
+    // d.AddMember("data", "Test message from /isosimtopic", d.GetAllocator());
     // while(1) {
-        // RBcppClient.publish("/isosimtopic",d);
-        // std::this_thread::sleep_for(std::chrono::seconds(30));
+    //     RBcppClient.publish("/isosimtopic",d);
+    //     std::this_thread::sleep_for(std::chrono::seconds(100));
     // }
     return;
 }
@@ -138,7 +140,6 @@ bool IsosimROS::publishState(IsosimROS::IsosimData stateData) {
         return false;
     }
 
-    std::cout << "publishstate()\n";
     rapidjson::Document d;
     d.SetObject();
 
@@ -150,16 +151,13 @@ bool IsosimROS::publishState(IsosimROS::IsosimData stateData) {
     rapidjson::Value Qx;
     rapidjson::Value Qy;
     rapidjson::Value Qz;
-    std::cout << "betcha it's here\n";
-    stateData.q.dump("this is our q");
     Qx.SetDouble(stateData.q[0]); 
     Qy.SetDouble(stateData.q[1]);
-    // Qz.SetDouble(stateData.q[2]); std::cout << "but not too wrong\n";
+    // Qz.SetDouble(stateData.q[2]); 
     Qobj.AddMember("x",Qx,d.GetAllocator());
     // Qarr.PushBack("x",)
     Qobj.AddMember("y",Qy,d.GetAllocator());
     // Qarr.AddMember("z",Qz,d.GetAllocator());
-    std::cout << "qobj generated\n";
     rapidjson::Value timestamp;
     timestamp.SetDouble(stateData.timestamp);
 
@@ -171,7 +169,7 @@ bool IsosimROS::publishState(IsosimROS::IsosimData stateData) {
     // d.AddMember("msg",msg,d.GetAllocator());
 
     RBcppClient.publish("/isosimtopic",d);
-    // std::cout << "published\n";
+
     return true; //when should we return false? //TODO
 }
 
@@ -230,7 +228,7 @@ void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*
         std::cout << std::endl << "msg received:   " << buffer.GetString() << std::endl << std::endl;
     #endif
 
-    std::cout << "\nAccess values in document:\n";
+    
     assert(forceD.IsObject());    // Document is a JSON value represents the root of DOM. Root can be either an object or array.
 
     
@@ -240,22 +238,19 @@ void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*
     
     assert(forceD["msg"]["linear"].HasMember("x"));
     assert(forceD["msg"]["linear"]["x"].IsDouble());
-    std::cout << "seems to work\n";
-    std::cout << forceD["msg"]["linear"]["x"].GetDouble() << std::endl;
+
+    // std::cout << forceD["msg"]["linear"]["x"].GetDouble() << std::endl;
 
     double x = forceD["msg"]["linear"]["x"].GetDouble();
     double y = forceD["msg"]["linear"]["y"].GetDouble();
     double z = forceD["msg"]["linear"]["z"].GetDouble();
 
-    // static SimTK::Vec3 forceFromROS = Vec3(x,y,z);
     
-    
-    // SimTK::Vec3 latestForce;
-    // IsosimROS::latestForce = {x,y,z};
+    //save to global variable
     latestForce = {x,y,z};
-    // std::cout <<"_latestforce" << latestForce.get(0) << std::endl;
-    // latestForce.set(2,z);
     
+
+
 
     // printf("linear = %d\n", document["linear"].GetString());
 }
@@ -708,11 +703,8 @@ void IsosimEngine::step(void) {
     IsosimEngine::FD_Output FDout = forwardInverseD();
     #endif
     //publish using comms::publisher
-    std::cout << "about to crash yeah\n";
-    // IsosimROS::IsosimData dat = FDoutputToIsosimData(FDout);
     commsClient.publishState(FDoutputToIsosimData(FDout));
-    //TODO ^^
-
+    
     // (maybe this last one can be done by a callback function)
     // (so we just set the latest state and that gets transmitted to commshub)
 
@@ -870,7 +862,6 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     output.uDot = newState_.getUDot();
 
     if (output.q.size() > 0) {
-        std::cout << "it has a size";
         output.valid = true;
     }
     return output;
