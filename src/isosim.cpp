@@ -106,9 +106,7 @@ void IsosimROS::init(void) {
 
     RBcppClient.addClient("topic_advertiser");
     RBcppClient.advertise("topic_advertiser", "/isosimtopic", "franka_panda_controller_swc/IsosimOutput");
-    // RBcppClient.advertise("topic_advertiser", "/isosimtopic", "std_msgs/String");
 
-    //TODO: add this message type ^^
 
     RBcppClient.addClient("topic_subscriber");
     RBcppClient.subscribe("topic_subscriber", "/twistfromCMD",forceSubscriberCallback);
@@ -146,29 +144,42 @@ bool IsosimROS::publishState(IsosimROS::IsosimData stateData) {
     d.SetObject();
 
     rapidjson::Value msg(rapidjson::kObjectType);
-    
-    //create Qarr and timestamp
-    rapidjson::Value Qobj(rapidjson::kObjectType);
-    assert(Qobj.IsObject());
-    rapidjson::Value Qx;
-    rapidjson::Value Qy;
-    rapidjson::Value Qz;
-    Qx.SetDouble(stateData.q[0]); 
-    Qy.SetDouble(stateData.q[1]);
-    // Qz.SetDouble(stateData.q[2]); 
-    Qobj.AddMember("x",Qx,d.GetAllocator());
-    // Qarr.PushBack("x",)
-    Qobj.AddMember("y",Qy,d.GetAllocator());
-    // Qarr.AddMember("z",Qz,d.GetAllocator());
+
+
+    //create wrist values
+    rapidjson::Value wristVec(rapidjson::kObjectType);
+    rapidjson::Value wX;
+    rapidjson::Value wY;
+    rapidjson::Value wZ;
+    wX.SetDouble(stateData.wristPos[0]);
+    wY.SetDouble(stateData.wristPos[1]);
+    wZ.SetDouble(stateData.wristPos[2]);
+    wristVec.AddMember("x",wX,d.GetAllocator());
+    wristVec.AddMember("y",wY,d.GetAllocator());
+    wristVec.AddMember("z",wZ,d.GetAllocator());
+
+    //create elbow values
+    rapidjson::Value elbowVec(rapidjson::kObjectType);
+    rapidjson::Value eX;
+    rapidjson::Value eY;
+    rapidjson::Value eZ;
+    eX.SetDouble(stateData.elbowPos[0]);
+    eY.SetDouble(stateData.elbowPos[1]);
+    eZ.SetDouble(stateData.elbowPos[2]);
+    elbowVec.AddMember("x",eX,d.GetAllocator());
+    elbowVec.AddMember("y",eY,d.GetAllocator());
+    elbowVec.AddMember("z",eZ,d.GetAllocator());
+
+    //create time values
     rapidjson::Value timestamp;
     timestamp.SetDouble(stateData.timestamp);
 
-    //add Qarr and timestamp to d
-    d.AddMember("Q",Qobj,d.GetAllocator());
+    //add values to d
+    d.AddMember("wristPos",wristVec,d.GetAllocator());
+    d.AddMember("elbowPos",elbowVec,d.GetAllocator());
     d.AddMember("time",timestamp,d.GetAllocator());
+    
 
-
-    // d.AddMember("msg",msg,d.GetAllocator());
 
     RBcppClient.publish("/isosimtopic",d);
 
@@ -339,7 +350,7 @@ bool IsosimEngine::generateIDModel(void) {
     // Define the initial and final simulation times //SHOULD BECOME OBSELETE IN REALTIME
     double initialTime = 0.0;
     double finalTime = 30.00 / 30;
-    const double timestep = 1e-3 * 50;
+    const double timestep = 1e-3 * 50; //TODO fix this
     IDtimestep = timestep; //this should be received from control input
     currentSimTime = 0; //can be overriden by control
 
@@ -702,16 +713,16 @@ void IsosimEngine::step(void) {
     IsosimEngine::FD_Output FDout = forwardD(IDout);
     #else
     //do the FD without bothwering with inverseD
-    IsosimEngine::FD_Output FDout = forwardInverseD();
+    // IsosimEngine::FD_Output FDout = forwardInverseD();
     #endif
     //publish using comms::publisher
-    // commsClient.publishState(FDoutputToIsosimData(FDout));
+    commsClient.publishState(FDoutputToIsosimData(FDout));
     
     // (maybe this last one can be done by a callback function)
     // (so we just set the latest state and that gets transmitted to commshub)
 
     #ifdef LOGGING
-        logger << FDout.timestamp << "   " << FDout.q << std::endl;
+        logger << FDout.timestamp << "   " << FDout.wristPos << std::endl;
     #endif
 
     currentSimTime += IDtimestep; //shouldn't be necessary with control input //TODO this
@@ -850,7 +861,7 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     FDModel.getMultibodySystem().realizeTopology();
 
     //step simulation
-    integrator_->stepBy(FDtimestep);
+    integrator_->stepBy(FDtimestep); //eventually will need stepTo() because we might miss timesteps
 
     SimTK::State newState_ = integrator_->getAdvancedState(); //TODO: should this work with the State& state_ now that I changed it to a pointer?
                                                             //TODO: actually, didn't I change it to a pointer??? I thought I called updAdvancedState().... not sure what's happening here
@@ -858,21 +869,18 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     FDModel.getVisualizer().show(newState_);
 
     //realize again so we can get state variables (can reduce the stage later if we decide we don't need U/Udot -- //TODO)
-    FDModel.getMultibodySystem().realize(newState_, Stage::Acceleration);
+    // FDModel.getMultibodySystem().realize(newState_, Stage::Acceleration);
 
-    output.q = newState_.getQ();
-    output.u = newState_.getU();
-    output.uDot = newState_.getUDot();
+    // output.q = newState_.getQ();
+    // output.u = newState_.getU();
+    // output.uDot = newState_.getUDot();
 
 
     //find positions in ground frame
-    SimTK::Vec3 humerusPos = FDModel.getBodySet().get("r_humerus").getPositionInGround(newState_);
-    SimTK::Vec3 elbowPos = FDModel.getBodySet().get("r_ulna_radius_hand").getPositionInGround(newState_);
-    SimTK::Vec3 wristPos = FDModel.getMarkerSet().get("r_radius_styloid").getLocationInGround(newState_);
-    std::cout << humerusPos << "<-- a humerous position\n";
-    std::cout << elbowPos << "<-- an elbow position\n";
-    std::cout << wristPos << "a wrisky position\n";  //TODO: change the output properties to be the elbow and wrist positions, rather than Q.
-    if (output.q.size() > 0) {
+        // SimTK::Vec3 humerusPos = FDModel.getBodySet().get("r_humerus").getPositionInGround(newState_); //humerus pos doesn't change (shoulder is fixed location)
+    output.elbowPos = FDModel.getBodySet().get("r_ulna_radius_hand").getPositionInGround(newState_);
+    output.wristPos = FDModel.getMarkerSet().get("r_radius_styloid").getLocationInGround(newState_);
+    if (output.elbowPos.size() > 0) {
         output.valid = true;
     }
     return output;
@@ -883,7 +891,7 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
 }
 
-
+/*
 IsosimEngine::FD_Output IsosimEngine::forwardInverseD(void) {
 
     IsosimEngine::ID_Input input(forceVecToInput(latestForce)); //need to make this threadsafe eventually
@@ -935,6 +943,8 @@ IsosimEngine::FD_Output IsosimEngine::forwardInverseD(void) {
 
     return output;
 }
+*/
+
 
 IsosimROS::IsosimData IsosimEngine::FDoutputToIsosimData(IsosimEngine::FD_Output calculatedState) {
 
@@ -942,10 +952,15 @@ IsosimROS::IsosimData IsosimEngine::FDoutputToIsosimData(IsosimEngine::FD_Output
     IsosimROS::IsosimData outputToRos;
     if (calculatedState.valid == true) {
         outputToRos.timestamp = calculatedState.timestamp;
-        outputToRos.q = calculatedState.q;
-        outputToRos.u = calculatedState.u;
-        outputToRos.uDot = calculatedState.uDot;
+        // outputToRos.q = calculatedState.q;
+        // outputToRos.u = calculatedState.u;
+        // outputToRos.uDot = calculatedState.uDot;
+        outputToRos.wristPos = calculatedState.wristPos;
+        outputToRos.elbowPos = calculatedState.elbowPos;
         outputToRos.valid = true;
+    } else {
+        std::cout << "INVALID OUTPUT FROM FD";
+        outputToRos.valid = false;
     }
     return outputToRos;
 }
@@ -961,7 +976,7 @@ IsosimEngine::~IsosimEngine() {
 
 
 /////TEST FUNCTION (OBSOLETE)
-
+/*
 void IsosimEngine::testPointActuator(void) {
 
     try {
@@ -1025,7 +1040,7 @@ void IsosimEngine::testPointActuator(void) {
     }
 };
 
-
+*/
 
 
 

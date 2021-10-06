@@ -41,9 +41,9 @@ class IsosimROS {
         struct IsosimData {
 
             double timestamp; 
-            SimTK::Vector q;    //TODO: change the properties here to be elbow and wrist transforms
-            SimTK::Vector u;
-            SimTK::Vector uDot;
+            
+            SimTK::Vec3 wristPos;
+            SimTK::Vec3 elbowPos;
             bool valid;
         };
 
@@ -77,9 +77,9 @@ class IsosimEngine {
         struct FD_Output {
 
             double timestamp; //should this be a time_t or not?
-            SimTK::Vector q;        //TODO: change the properties here to be elbow and wrist transforms
-            SimTK::Vector u;
-            SimTK::Vector uDot;
+
+            SimTK::Vec3 wristPos;
+            SimTK::Vec3 elbowPos;
             bool valid;
 
         };
@@ -95,8 +95,6 @@ class IsosimEngine {
         //point force used to represent force exterted on end effector
         OpenSim::PointActuator endEffector;
         double IDtimestep;
-        // SimTK::Vec2 shoulderElevRange;
-        // SimTK::Vec2 elbowFlexRange;
 
 
         bool generateFDModel(void); //imports/configures forward dynamics model
