@@ -297,18 +297,19 @@ void IsosimEngine::init(void) {
         std::cout<<"The current date/time is:"<<asctime(curtime);
 
         logger.open("Output/position.log", std::ios_base::app);
+        logger << "ISOSIM DATA\n DATE: " << asctime(curtime) << "\nTIMESTAMP Q\n";
     #endif
 
     
     //give an initial force
-    latestForce = {0,-3,0};
-    clock_t timeAtStart = clock();
+    latestForce = {0,0,-1};
+    clock_t timeAtStart = std::clock();
     for (double i = 0; i < 20; i+= IDtimestep) {
         step();
     }
-    clock_t midTime = clock();
+    clock_t midTime = std::clock();
     latestForce = {100,0,0};
-    for (double i = 0; i < 200; i+= IDtimestep) {
+    for (double i = 0; i < 20; i+= IDtimestep) {
         step();
     }
     latestForce = {0,1,0};
@@ -316,10 +317,10 @@ void IsosimEngine::init(void) {
         step();
     }
     
-    clock_t timeAtEnd = clock();
+    clock_t timeAtEnd = std::clock();
 
-    std::cout << "Completed forward test in " << (midTime - timeAtStart)*1000/CLOCKS_PER_SEC << " seconds\n";
-    std::cout << "Completed backward test in " << ((timeAtEnd - midTime)*1000/CLOCKS_PER_SEC) << " seconds\n";
+    std::cout << "Completed forward test in " << ((double) (midTime - timeAtStart))/CLOCKS_PER_SEC << " seconds\n";
+    std::cout << "Completed backward test in " << ((double) (timeAtEnd - timeAtStart))/CLOCKS_PER_SEC << " seconds\n";
 }
 
 int IsosimEngine::get_state(void) {
@@ -725,7 +726,7 @@ bool IsosimEngine::generateFDModel(void) {
     si.setTime(initialTime);
     FDmanager->initialize(si);
 
-
+    FDModel.getVisualizer().show(si);
     
     std::cout << "FDmodel generated\n";
 
@@ -737,6 +738,7 @@ bool IsosimEngine::generateFDModel(void) {
 
 void IsosimEngine::step(void) {
 
+    // clock_t initTime = std::clock();
     #ifdef IDFD
     //step id first using IsosimEngine::inverseD
     IsosimEngine::ID_Output IDout = inverseD();
@@ -761,6 +763,9 @@ void IsosimEngine::step(void) {
     #endif
 
     currentSimTime += IDtimestep; //shouldn't be necessary with control input //TODO this
+
+    // double stepTime = ((double) (std::clock() - initTime))/CLOCKS_PER_SEC;
+    // std::cout << "STEPPED IN " << stepTime << " seconds! that's " << (std::clock() - initTime) << " clocks \n";
 }
 
 
@@ -806,6 +811,8 @@ IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
 
     // std::cout << "residualmob: " << output.residualMobilityForces << " from forcevec: " <<  latestForce << "\n magnitude: " << input.forceMag << " and direction: " << input.forceDirection << std::endl;
     output.valid = true;
+
+    
     return output;
 
 }
@@ -830,6 +837,8 @@ IsosimEngine::ID_Input IsosimEngine::forceVecToInput (SimTK::Vec3 forceVector) {
 
 
 IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
+
+    clock_t FDstartTime = std::clock();
 
     IsosimEngine::FD_Output output;
     output.valid = false; //we'll change this to true once we have data
@@ -900,6 +909,7 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     FDModel.getMultibodySystem().realizeTopology();
 
     //step simulation
+    clock_t steppingTime = std::clock();
     integrator_->stepBy(FDtimestep); //eventually will need stepTo() because we might miss timesteps
 
     SimTK::State newState_ = integrator_->getAdvancedState(); //TODO: should this work with the State& state_ now that I changed it to a pointer?
@@ -907,8 +917,8 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
     FDModel.getVisualizer().show(newState_);
 
-    //realize again so we can get state variables (can reduce the stage later if we decide we don't need U/Udot -- //TODO)
-    // FDModel.getMultibodySystem().realize(newState_, Stage::Acceleration);
+    //realize again so we can get state variables 
+    FDModel.getMultibodySystem().realize(newState_, Stage::Position);
 
 
     //find positions in ground frame
@@ -918,6 +928,7 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     if (output.elbowPos.size() > 0) {
         output.valid = true;
     }
+
     return output;
 
     
@@ -925,6 +936,12 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
 
 }
+
+
+double IsosimEngine::torqueSpring(state* state_,double torque) {
+    
+}
+
 
 /*
 IsosimEngine::FD_Output IsosimEngine::forwardInverseD(void) {
