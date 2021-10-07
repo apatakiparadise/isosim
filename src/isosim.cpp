@@ -441,7 +441,7 @@ bool IsosimEngine::generateIDModel(void) {
     Vector udotActuatorsCombination = si.getUDot();
 
 
-
+    std::cout << "ground control to major tom\n";
     
     
     /////////////////////////////////////////////
@@ -463,11 +463,13 @@ bool IsosimEngine::generateIDModel(void) {
     IDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
     #ifdef IDFD
     IDelbowJoint.getCoordinate().setLocked(si, true);
+    std::cout << "ground control to Major Tom\n";
     
-    for (int i = 0; i < IDshoulderJoint.getNumStateVariables(); i++) { //locks all coordinates of the joint
+    std::cout << IDshoulderJoint.numCoordinates() << "<-- number of state var\n";
+    for (int i = 0; i < IDshoulderJoint.numCoordinates(); i++) { //locks all coordinates of the joint
         IDshoulderJoint.get_coordinates(i).setLocked(si,true);
     }
-        
+    std::cout << "standby for takeoff, and put your seatbelt on\n";
     
     // IDshoulderJoint.getCoordinate().setLocked(si,true);
     #else
@@ -652,12 +654,14 @@ bool IsosimEngine::generateFDModel(void) {
     SimTK::Vec3 FDshoulderAxis2 = FDshoulderCustomJoint.getSpatialTransform().get_rotation2().getAxis();
     std::cout << FDshoulderAxis1 << "<-- this is the shoulder axis rot1\n";
     std::cout << FDshoulderAxis2 << "<-- this is the shoulder axis rot2\n";
+    FDshoulderTorque1.setName("shoulder_elev_T");
     FDshoulderTorque1.set_bodyA("base");
     FDshoulderTorque1.set_bodyB("r_humerus");
     FDshoulderTorque1.set_torque_is_global(false);
     FDshoulderTorque1.setAxis(FDshoulderAxis1);
     FDshoulderTorque1.setOptimalForce(OPTIMAL_TORQUE) ; // N.m (maximum torque supposedly)
 
+    FDshoulderTorque2.setName("shoulder_rot2_T");
     FDshoulderTorque2.set_bodyA("base");
     FDshoulderTorque2.set_bodyB("r_humerus");
     FDshoulderTorque2.set_torque_is_global(false);
@@ -708,7 +712,7 @@ bool IsosimEngine::generateFDModel(void) {
 
     //clamp joints to within limits
     FDelbowCustomJoint.getCoordinate().setClamped(si,true);
-    for (int i=0; i<FDshoulderCustomJoint.getNumStateVariables(); i++) {
+    for (int i=0; i<FDshoulderCustomJoint.numCoordinates(); i++) {
         FDshoulderCustomJoint.get_coordinates(i).setClamped(si,true);
     }
     // FDshoulderCustomJoint.getCoordinate().setClamped(si,true);
@@ -856,10 +860,9 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     double elbowMaxFlex = FDelbowCustomJoint.getCoordinate().getRangeMax();
     double elbowMinFlex = FDelbowCustomJoint.getCoordinate().getRangeMin();
 
-    std::cout << "rot2 q index is " << FDshoulderCustomJoint.get_coordinates(1).getMobilizerQIndex() << std::endl;
 
     //possible need to realize to dynamics here. But how will we fd after?
-    FDModel.getMultibodySystem().realize(state_, Stage::Velocity);
+    // FDModel.getMultibodySystem().realize(state_, Stage::Velocity);
 
 
     Vector shoulderControls1_(1);

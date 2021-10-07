@@ -333,6 +333,7 @@
 										<locked>false</locked>
 										<!--If specified, the coordinate can be prescribed by a function of time. It can be any OpenSim Function with valid second order derivatives.-->
 										<prescribed_function />
+									</Coordinate>
 								</objects>
 								<groups />
 							</CoordinateSet>
