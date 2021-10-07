@@ -22,6 +22,9 @@
 #define ISOSIM_RUN 1
 #define ISOSIM_END_EXPERIMENT 4
 
+
+#define OPTIMAL_TORQUE 100 //N m
+
 namespace isosim {
 
 
@@ -104,7 +107,7 @@ class IsosimEngine {
         double currentSimTime;
         
         //actuators to apply input from ID in FD model
-        OpenSim::TorqueActuator FDshoulderTorque;
+        OpenSim::TorqueActuator FDshoulderTorque1;
         OpenSim::TorqueActuator FDshoulderTorque2;
         OpenSim::TorqueActuator FDelbowTorque;
 

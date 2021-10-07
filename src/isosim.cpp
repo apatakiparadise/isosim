@@ -648,32 +648,44 @@ bool IsosimEngine::generateFDModel(void) {
     }
 
     //add torque actuators (to be controlled by ID input)
-    SimTK::Vec3 FDshoulderAxis = FDshoulderCustomJoint.getSpatialTransform().get_rotation1().getAxis();
-    std::cout << FDshoulderAxis << "<-- this is the shoulder axis rot1\n";
-    FDshoulderTorque.set_bodyA("base");
-    FDshoulderTorque.set_bodyB("r_humerus");
-    FDshoulderTorque.set_torque_is_global(false);
-    FDshoulderTorque.setAxis(FDshoulderAxis);
-    FDshoulderTorque.setOptimalForce(100) ; // N.m (maximum torque supposedly)
-            //TODO: change this optimal force into a class variable?
+    SimTK::Vec3 FDshoulderAxis1 = FDshoulderCustomJoint.getSpatialTransform().get_rotation1().getAxis();
+    SimTK::Vec3 FDshoulderAxis2 = FDshoulderCustomJoint.getSpatialTransform().get_rotation2().getAxis();
+    std::cout << FDshoulderAxis1 << "<-- this is the shoulder axis rot1\n";
+    std::cout << FDshoulderAxis2 << "<-- this is the shoulder axis rot2\n";
+    FDshoulderTorque1.set_bodyA("base");
+    FDshoulderTorque1.set_bodyB("r_humerus");
+    FDshoulderTorque1.set_torque_is_global(false);
+    FDshoulderTorque1.setAxis(FDshoulderAxis1);
+    FDshoulderTorque1.setOptimalForce(OPTIMAL_TORQUE) ; // N.m (maximum torque supposedly)
+
+    FDshoulderTorque2.set_bodyA("base");
+    FDshoulderTorque2.set_bodyB("r_humerus");
+    FDshoulderTorque2.set_torque_is_global(false);
+    FDshoulderTorque2.setAxis(FDshoulderAxis2);
+    FDshoulderTorque2.setOptimalForce(OPTIMAL_TORQUE) ; // N.m (maximum torque supposedly)
+
 
     SimTK::Vec3 FDelbowFlexAxis = FDelbowCustomJoint.getSpatialTransform().get_rotation1().getAxis();
     FDelbowTorque.set_bodyA("r_humerus");
     FDelbowTorque.set_bodyB("r_ulna_radius_hand");
     FDelbowTorque.set_torque_is_global(false);
     FDelbowTorque.setAxis(FDelbowFlexAxis);
-    FDelbowTorque.setOptimalForce(100);
+    FDelbowTorque.setOptimalForce(OPTIMAL_TORQUE);
 
-    FDModel.addForce(&FDshoulderTorque);
+    FDModel.addForce(&FDshoulderTorque1);
+    FDModel.addForce(&FDshoulderTorque2);
     FDModel.addForce(&FDelbowTorque);
     FDModel.finalizeConnections();
     
-    //set default shoulder torque
-    SimTK::Vector shoulderControls(1);///TODO: test this
-    shoulderControls(0) = 0;
+    //set default shoulder torque to zero
+    SimTK::Vector shoulderControls1(1);
+    shoulderControls1(0) = 0;
+    SimTK::Vector shoulderControls2(1);
+    shoulderControls2(0) = 0;
 
     SimTK::Vector modelControls = FDModel.getDefaultControls();
-    FDshoulderTorque.addInControls(shoulderControls,modelControls);
+    FDshoulderTorque1.addInControls(shoulderControls1,modelControls);
+    FDshoulderTorque2.addInControls(shoulderControls2,modelControls);
 
     //set default elbow torque
     SimTK::Vector elbowControls(1);
@@ -844,22 +856,27 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     double elbowMaxFlex = FDelbowCustomJoint.getCoordinate().getRangeMax();
     double elbowMinFlex = FDelbowCustomJoint.getCoordinate().getRangeMin();
 
-    
+    std::cout << "rot2 q index is " << FDshoulderCustomJoint.get_coordinates(1).getMobilizerQIndex() << std::endl;
 
     //possible need to realize to dynamics here. But how will we fd after?
     FDModel.getMultibodySystem().realize(state_, Stage::Velocity);
 
 
-    Vector shoulderControls_(1);
+    Vector shoulderControls1_(1);
+    Vector shoulderControls2_(1);
     Vector elbowControls_(1);
     
-    shoulderControls_(0) = input.residualMobilityForces(SHOULDER_NUM) / FDshoulderTorque.getOptimalForce();
-    elbowControls_(0) = input.residualMobilityForces(ELBOW_NUM) / FDelbowTorque.getOptimalForce();
+    shoulderControls1_(0) = input.residualMobilityForces(
+        FDshoulderCustomJoint.get_coordinates(0).getMobilizerQIndex()) / FDshoulderTorque1.getOptimalForce();
+    shoulderControls2_(0) = input.residualMobilityForces(
+        FDshoulderCustomJoint.get_coordinates(1).getMobilizerQIndex()) / FDshoulderTorque2.getOptimalForce();
+    elbowControls_(0) = input.residualMobilityForces(
+        FDelbowCustomJoint.getCoordinate().getMobilizerQIndex()) / FDelbowTorque.getOptimalForce();
 
     //if controls are taking us past the limit, set the control to zero
-    // if ((shoulderControls_(0) > 0 && state_.getQ()[SHOULDER_NUM] > shoulderMaxElev) ||
-    //         (shoulderControls_(0) < 0 && state_.getQ()[SHOULDER_NUM] < shoulderMinElev)) {
-    //     shoulderControls_(0) = 0;
+    // if ((shoulderControls1_(0) > 0 && state_.getQ()[SHOULDER_NUM] > shoulderMaxElev) ||
+    //         (shoulderControls1_(0) < 0 && state_.getQ()[SHOULDER_NUM] < shoulderMinElev)) {
+    //     shoulderControls1_(0) = 0;
     //     std::cout << "MAXXXXXXXED"; 
     //     // while(1) {std::cout << "hi?" << state_.getQ();}
     // }
@@ -870,7 +887,8 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     }
 
     Vector modelControls_ = FDModel.getDefaultControls();
-    FDshoulderTorque.addInControls(shoulderControls_,modelControls_);
+    FDshoulderTorque1.addInControls(shoulderControls1_,modelControls_);
+    FDshoulderTorque2.addInControls(shoulderControls2_,modelControls_);
 
     FDelbowTorque.addInControls(elbowControls_,modelControls_); //TODO: does this work or do I need to split in two steps?
 
