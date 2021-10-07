@@ -105,6 +105,7 @@ class IsosimEngine {
         
         //actuators to apply input from ID in FD model
         OpenSim::TorqueActuator FDshoulderTorque;
+        OpenSim::TorqueActuator FDshoulderTorque2;
         OpenSim::TorqueActuator FDelbowTorque;
 
         struct ID_Output {

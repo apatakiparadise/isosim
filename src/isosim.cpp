@@ -19,6 +19,7 @@
 
 #define IDFD
 // #undef IDFD //not doing both currently
+#define EXTRA_ROT 1
 
 #undef DEBUG
 
@@ -355,7 +356,7 @@ bool IsosimEngine::generateIDModel(void) {
     currentSimTime = 0; //can be overriden by control
 
     //import model
-    IDModel =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
+    IDModel =  OpenSim::Model("Models/arm26-mod.osim"); std::cout << "loaded model from arm26-mod" << std::endl;
     std::cout << IDModel.getName() << "<----------------model name\n\n";
     //setup everything
     Vec3 grav = IDModel.get_gravity()*0; //end effector force is the net force (so includes gravity)
@@ -364,9 +365,18 @@ bool IsosimEngine::generateIDModel(void) {
     //get joints
     const OpenSim::JointSet& IDjointset = IDModel.get_JointSet();
     const OpenSim::Joint& IDshoulderJoint = IDjointset.get("r_shoulder");
-    const OpenSim::Coordinate& IDshoulderelevcoord = IDshoulderJoint.getCoordinate();
-    // shoulderElevRange = {IDshoulderelevcoord.getRangeMin(), IDshoulderelevcoord.getRangeMax()};
 
+
+    // if (EXTRA_ROT) {
+        
+    //     const OpenSim::Coordinate& IDshoulderelevcoord = IDshoulderJoint.get_coordinates(0);
+    //     const OpenSim::Coordinate& IDshoulderRot2Coord = IDshoulderJoint.get_coordinates(1);
+        
+    // } else {
+    //     const OpenSim::Coordinate& IDshoulderelevcoord = IDshoulderJoint.getCoordinate();
+    //     // shoulderElevRange = {IDshoulderelevcoord.getRangeMin(), IDshoulderelevcoord.getRangeMax()};
+    // }
+    
 
     const OpenSim::Joint& IDelbowJoint = IDjointset.get("r_elbow");
     const OpenSim::Coordinate& IDelbowflex = IDelbowJoint.getCoordinate();
@@ -453,7 +463,13 @@ bool IsosimEngine::generateIDModel(void) {
     IDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
     #ifdef IDFD
     IDelbowJoint.getCoordinate().setLocked(si, true);
-    IDshoulderJoint.getCoordinate().setLocked(si,true);
+    
+    for (int i = 0; i < IDshoulderJoint.getNumStateVariables(); i++) { //locks all coordinates of the joint
+        IDshoulderJoint.get_coordinates(i).setLocked(si,true);
+    }
+        
+    
+    // IDshoulderJoint.getCoordinate().setLocked(si,true);
     #else
     IDelbowJoint.getCoordinate().setClamped(si,true);
     IDshoulderJoint.getCoordinate().setClamped(si,true);
@@ -594,7 +610,7 @@ bool IsosimEngine::generateFDModel(void) {
 
     std::cout << "initialising FD model\n";
     //import model
-    FDModel =  OpenSim::Model("Models/arm26.osim");
+    FDModel =  OpenSim::Model("Models/arm26-mod.osim");
     //setup everything
     try {
         FDtimestep = IDtimestep;
@@ -680,7 +696,10 @@ bool IsosimEngine::generateFDModel(void) {
 
     //clamp joints to within limits
     FDelbowCustomJoint.getCoordinate().setClamped(si,true);
-    FDshoulderCustomJoint.getCoordinate().setClamped(si,true);
+    for (int i=0; i<FDshoulderCustomJoint.getNumStateVariables(); i++) {
+        FDshoulderCustomJoint.get_coordinates(i).setClamped(si,true);
+    }
+    // FDshoulderCustomJoint.getCoordinate().setClamped(si,true);
     
     
     FDModel.print("FDisosimModel.osim");
@@ -819,8 +838,9 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     const OpenSim::CustomJoint& FDshoulderCustomJoint =  FDModel.getComponent<OpenSim::CustomJoint>("/jointset/r_shoulder");
     const OpenSim::CustomJoint& FDelbowCustomJoint =  FDModel.getComponent<OpenSim::CustomJoint>("/jointset/r_elbow");
     
-    double shoulderMaxElev =  FDshoulderCustomJoint.getCoordinate().getRangeMax();
-    double shoulderMinElev =  FDshoulderCustomJoint.getCoordinate().getRangeMin();
+    
+    // double shoulderMaxElev =  FDshoulderCustomJoint.getCoordinate().getRangeMax();
+    // double shoulderMinElev =  FDshoulderCustomJoint.getCoordinate().getRangeMin();
     double elbowMaxFlex = FDelbowCustomJoint.getCoordinate().getRangeMax();
     double elbowMinFlex = FDelbowCustomJoint.getCoordinate().getRangeMin();
 
@@ -829,8 +849,6 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     //possible need to realize to dynamics here. But how will we fd after?
     FDModel.getMultibodySystem().realize(state_, Stage::Velocity);
 
-    // double shoulderPrevElev = FDshoulderCustomJoint.getCoordinate().getValue(state_);
-    // double elbowPrevFlex = FDelbowCustomJoint.getCoordinate().getValue(state_);
 
     Vector shoulderControls_(1);
     Vector elbowControls_(1);
@@ -839,12 +857,12 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     elbowControls_(0) = input.residualMobilityForces(ELBOW_NUM) / FDelbowTorque.getOptimalForce();
 
     //if controls are taking us past the limit, set the control to zero
-    if ((shoulderControls_(0) > 0 && state_.getQ()[SHOULDER_NUM] > shoulderMaxElev) ||
-            (shoulderControls_(0) < 0 && state_.getQ()[SHOULDER_NUM] < shoulderMinElev)) {
-        shoulderControls_(0) = 0;
-        std::cout << "MAXXXXXXXED"; 
-        // while(1) {std::cout << "hi?" << state_.getQ();}
-    }
+    // if ((shoulderControls_(0) > 0 && state_.getQ()[SHOULDER_NUM] > shoulderMaxElev) ||
+    //         (shoulderControls_(0) < 0 && state_.getQ()[SHOULDER_NUM] < shoulderMinElev)) {
+    //     shoulderControls_(0) = 0;
+    //     std::cout << "MAXXXXXXXED"; 
+    //     // while(1) {std::cout << "hi?" << state_.getQ();}
+    // }
     if ((elbowControls_(0) > 0 && state_.getQ()[ELBOW_NUM] > elbowMaxFlex) ||
             (elbowControls_(0) < 0 && state_.getQ()[ELBOW_NUM] < elbowMinFlex)) {
         elbowControls_(0) = 0;
@@ -870,10 +888,6 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
     //realize again so we can get state variables (can reduce the stage later if we decide we don't need U/Udot -- //TODO)
     // FDModel.getMultibodySystem().realize(newState_, Stage::Acceleration);
-
-    // output.q = newState_.getQ();
-    // output.u = newState_.getU();
-    // output.uDot = newState_.getUDot();
 
 
     //find positions in ground frame
