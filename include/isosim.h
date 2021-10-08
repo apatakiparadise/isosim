@@ -107,9 +107,9 @@ class IsosimEngine {
         double currentSimTime;
         
         //actuators to apply input from ID in FD model
-        OpenSim::TorqueActuator FDshoulderTorque1;
-        OpenSim::TorqueActuator FDshoulderTorque2;
-        OpenSim::TorqueActuator FDelbowTorque;
+        OpenSim::TorqueActuator FDshoulderTorque1; // shoulder elevation
+        OpenSim::TorqueActuator FDshoulderTorque2; // inward rotation (positive is adduction, neg abduction)
+        OpenSim::TorqueActuator FDelbowTorque; // elbow flexion (pos is flexion, neg is extension)
 
         struct ID_Output {
 
@@ -119,12 +119,17 @@ class IsosimEngine {
         };
 
         
+        //performs one iteration of inverse dynamics
+        ID_Output inverseD(void);
 
         //performs one iteration of forward dynamics
         IsosimEngine::FD_Output forwardD(IsosimEngine::ID_Output input);
 
-        //performs one iteration of inverse dynamics
-        ID_Output inverseD(void);
+        //applies spring to joint when it approaches its limit
+        double torqueSpring(double q, double u, double udot, double torque, const OpenSim::Coordinate* coord);
+        double Kspring = 20*0; //K constant for joint springs (N.m/rad)
+        double Bspring = 4; //Beta constant for joint springs (damping) (N.m.s/rad)
+        double Bfree = 0.1*0.1; //Beta constant for damping within range of motion (N.m.s/rad)
 
         void step(void);
 

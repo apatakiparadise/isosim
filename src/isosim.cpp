@@ -39,8 +39,9 @@ RosbridgeWsClient RBcppClient("localhost:9090");
 
 
 //order of joints in system state Q/Qdot/Udot vectors
-#define SHOULDER_NUM 0
-#define ELBOW_NUM 1
+#define SHOULDER_ELEV_QNUM 0
+#define SHOULDER_ROT_QNUM 1
+#define ELBOW_QNUM 2
 
 int main(void) {
 
@@ -302,19 +303,19 @@ void IsosimEngine::init(void) {
 
     
     //give an initial force
-    latestForce = {0,0,-1};
+    latestForce = {0,0,1}; // Newtons
     clock_t timeAtStart = std::clock();
-    for (double i = 0; i < 20; i+= IDtimestep) {
+    for (double i = 0; i < 5; i+= IDtimestep) {
         step();
     }
     clock_t midTime = std::clock();
-    latestForce = {100,0,0};
+    latestForce = {0,0,0};
     for (double i = 0; i < 20; i+= IDtimestep) {
         step();
     }
-    latestForce = {0,1,0};
+    latestForce = {0,0,0};
     for (double i = 0; i < 20; i+= IDtimestep) {
-        step();
+        // step();
     }
     
     clock_t timeAtEnd = std::clock();
@@ -352,7 +353,7 @@ bool IsosimEngine::generateIDModel(void) {
     // Define the initial and final simulation times //SHOULD BECOME OBSELETE IN REALTIME
     double initialTime = 0.0;
     double finalTime = 30.00 / 30;
-    const double timestep = 1e-3 * 50; //TODO fix this
+    const double timestep = 1e-3 * 0.10; //TODO fix this
     IDtimestep = timestep; //this should be received from control input
     currentSimTime = 0; //can be overriden by control
 
@@ -420,6 +421,7 @@ bool IsosimEngine::generateIDModel(void) {
     std::cout << endEffector.get_direction() << "<-- eE dir\n";//endEffector.set_direction(SimTK::Vec3(1,1,1));
     double optimalEndForce = 100; //Newtons (should be maximum force)
     endEffector.setOptimalForce(optimalEndForce);
+    
     std::cout << endEffector.getOptimalForce() << "  <-- optimal force from endeffector\n";
 
     IDModel.addForce(&endEffector);
@@ -462,6 +464,9 @@ bool IsosimEngine::generateIDModel(void) {
 
     //lock joints - Only if we're performing ID first, not necessary for the direct FD method
     IDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
+    std::cout << IDshoulderJoint.get_coordinates(0).getName() << "<--name of shoulder coord 0. Let's set it to pi radians\n";
+    
+    
     #ifdef IDFD
     IDelbowJoint.getCoordinate().setLocked(si, true);
     std::cout << "ground control to Major Tom\n";
@@ -514,7 +519,7 @@ bool IsosimEngine::generateIDModel(void) {
            
     }
     std::cout << "what does this mean?\n";
-    // return false;
+    
 
     SimTK::Vector residualMobilityForces;
     double simTime = 0;
@@ -628,7 +633,6 @@ bool IsosimEngine::generateFDModel(void) {
     Vec3 grav = FDModel.get_gravity()*0;
     FDModel.set_gravity(grav); //redundant unless we change grav above
 
-
     //get bodies
     const OpenSim::BodySet& FDbodyset = FDModel.get_BodySet();
     const OpenSim::Body& FDbasebod = FDbodyset.get("base");
@@ -649,6 +653,7 @@ bool IsosimEngine::generateFDModel(void) {
     for (int i=0; i < muscleSet.getSize(); i++) {
         muscleSet.get(i).set_appliesForce(false);
     }
+
 
     //add torque actuators (to be controlled by ID input)
     SimTK::Vec3 FDshoulderAxis1 = FDshoulderCustomJoint.getSpatialTransform().get_rotation1().getAxis();
@@ -715,6 +720,7 @@ bool IsosimEngine::generateFDModel(void) {
     FDelbowCustomJoint.getCoordinate().setClamped(si,true);
     for (int i=0; i<FDshoulderCustomJoint.numCoordinates(); i++) {
         FDshoulderCustomJoint.get_coordinates(i).setClamped(si,true);
+        FDshoulderCustomJoint.get_coordinates(i).setLocked(si,true);
     }
     // FDshoulderCustomJoint.getCoordinate().setClamped(si,true);
     
@@ -759,7 +765,7 @@ void IsosimEngine::step(void) {
     // (so we just set the latest state and that gets transmitted to commshub)
 
     #ifdef LOGGING
-        logger << FDout.timestamp << "   " << FDout.wristPos << std::endl;
+        logger << FDout.timestamp << "   " ;//<< FDout.wristPos << std::endl;
     #endif
 
     currentSimTime += IDtimestep; //shouldn't be necessary with control input //TODO this
@@ -807,7 +813,6 @@ IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
     SimTK::Vector_<SimTK::SpatialVec> appliedBodyForces(IDModel.getMultibodySystem().getRigidBodyForces(state_, SimTK::Stage::Dynamics));
 
     output.residualMobilityForces = idSolver->solve(state_,Udot,appliedMobilityForces,appliedBodyForces);
-
 
     // std::cout << "residualmob: " << output.residualMobilityForces << " from forcevec: " <<  latestForce << "\n magnitude: " << input.forceMag << " and direction: " << input.forceDirection << std::endl;
     output.valid = true;
@@ -870,20 +875,36 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     double elbowMinFlex = FDelbowCustomJoint.getCoordinate().getRangeMin();
 
 
-    //possible need to realize to dynamics here. But how will we fd after?
-    // FDModel.getMultibodySystem().realize(state_, Stage::Velocity);
+    
+    FDModel.getMultibodySystem().realize(state_, Stage::Acceleration);
 
 
     Vector shoulderControls1_(1);
     Vector shoulderControls2_(1);
     Vector elbowControls_(1);
     
-    shoulderControls1_(0) = input.residualMobilityForces(
-        FDshoulderCustomJoint.get_coordinates(0).getMobilizerQIndex()) / FDshoulderTorque1.getOptimalForce();
-    shoulderControls2_(0) = input.residualMobilityForces(
-        FDshoulderCustomJoint.get_coordinates(1).getMobilizerQIndex()) / FDshoulderTorque2.getOptimalForce();
-    elbowControls_(0) = input.residualMobilityForces(
-        FDelbowCustomJoint.getCoordinate().getMobilizerQIndex()) / FDelbowTorque.getOptimalForce();
+    
+    // std::cout << "indices:  shouldElev " << SHOULDER_ELEV_QNUM << "    shouldRot " 
+    //         << SHOULDER_ROT_QNUM << " elbowFlex " << ELBOW_QNUM << std::endl;
+
+    shoulderControls1_(0) = 0;//input.residualMobilityForces(SHOULDER_ELEV_QNUM) / FDshoulderTorque1.getOptimalForce();
+    shoulderControls2_(0) = 0;//input.residualMobilityForces(SHOULDER_ROT_QNUM) / FDshoulderTorque2.getOptimalForce();
+    // elbowControls_(0) = input.residualMobilityForces(ELBOW_QNUM) / FDelbowTorque.getOptimalForce();
+
+    SimTK::Vector qVec_ = state_.getQ();
+    SimTK::Vector uVec_ = state_.getU();
+    SimTK::Vector uDVec_ = state_.getUDot();
+
+    // shoulderControls1_(0) = torqueSpring(qVec_(SHOULDER_ELEV_QNUM), uVec_(SHOULDER_ELEV_QNUM), uDVec_(SHOULDER_ELEV_QNUM),
+    //         input.residualMobilityForces(SHOULDER_ELEV_QNUM), &FDshoulderCustomJoint.get_coordinates(0))
+    //         / FDshoulderTorque1.getOptimalForce();
+    // shoulderControls2_(0) = torqueSpring(qVec_(SHOULDER_ROT_QNUM), uVec_(SHOULDER_ROT_QNUM), uDVec_(SHOULDER_ROT_QNUM),
+    //         input.residualMobilityForces(SHOULDER_ROT_QNUM), &FDshoulderCustomJoint.get_coordinates(1))
+    //         / FDshoulderTorque2.getOptimalForce();
+    elbowControls_(0) = torqueSpring(qVec_(ELBOW_QNUM), uVec_(ELBOW_QNUM), uDVec_(ELBOW_QNUM),
+            input.residualMobilityForces(ELBOW_QNUM), &FDelbowCustomJoint.getCoordinate() )
+            / FDelbowTorque.getOptimalForce();
+    
 
     //if controls are taking us past the limit, set the control to zero
     // if ((shoulderControls1_(0) > 0 && state_.getQ()[SHOULDER_NUM] > shoulderMaxElev) ||
@@ -892,11 +913,11 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     //     std::cout << "MAXXXXXXXED"; 
     //     // while(1) {std::cout << "hi?" << state_.getQ();}
     // }
-    if ((elbowControls_(0) > 0 && state_.getQ()[ELBOW_NUM] > elbowMaxFlex) ||
-            (elbowControls_(0) < 0 && state_.getQ()[ELBOW_NUM] < elbowMinFlex)) {
-        elbowControls_(0) = 0;
-        // std::cout << "MAXXXXXXXED"; while(1) {std::cout << "hey? ";}
-    }
+    // if ((elbowControls_(0) > 0 && state_.getQ()[ELBOW_NUM] > elbowMaxFlex) ||
+    //         (elbowControls_(0) < 0 && state_.getQ()[ELBOW_NUM] < elbowMinFlex)) {
+    //     elbowControls_(0) = 0;
+    //     // std::cout << "MAXXXXXXXED"; while(1) {std::cout << "hey? ";}
+    // }
 
     Vector modelControls_ = FDModel.getDefaultControls();
     FDshoulderTorque1.addInControls(shoulderControls1_,modelControls_);
@@ -908,18 +929,27 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
     FDModel.getMultibodySystem().realizeTopology();
 
+    double step0 = state_.getTime();
     //step simulation
     clock_t steppingTime = std::clock();
-    integrator_->stepBy(FDtimestep); //eventually will need stepTo() because we might miss timesteps
+    // SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep); //eventually will need stepTo() because we might miss timesteps
+    SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepTo(step0 + FDtimestep);
+    // std::cout << "\nstepstatus: " << SimTK::Integrator::successfulStepStatusString(result) << " \n";
+    
+
+    std::cout << integrator_->getAccuracyInUse() << "<-accuracy ";
 
     SimTK::State newState_ = integrator_->getAdvancedState(); //TODO: should this work with the State& state_ now that I changed it to a pointer?
                                                             //TODO: actually, didn't I change it to a pointer??? I thought I called updAdvancedState().... not sure what's happening here
 
+    double stepped1 = newState_.getTime() - step0;
+    std::cout << "stepped " << stepped1 << " ";
+    logger << " " << stepped1 << " ";
     FDModel.getVisualizer().show(newState_);
 
     //realize again so we can get state variables 
     FDModel.getMultibodySystem().realize(newState_, Stage::Position);
-
+    
 
     //find positions in ground frame
         // SimTK::Vec3 humerusPos = FDModel.getBodySet().get("r_humerus").getPositionInGround(newState_); //humerus pos doesn't change (shoulder is fixed location)
@@ -938,8 +968,40 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 }
 
 
-double IsosimEngine::torqueSpring(state* state_,double torque) {
+/* 
+Enforces joint limits by adding a spring when the given coordinate approaches its limit
+    Damped spring of the following form:
+        T = K * x + B * u
+@param: q,u  - state variables for the given coordinate
+        torque - joint torque received from ID
+        coord - the coordinate concerned
+@returns: the new torque after spring applied
+*/
+double IsosimEngine::torqueSpring(double q, double u, double udot, double torque, const OpenSim::Coordinate* coord) {
     
+    double tol = (coord->getRangeMax() - coord->getRangeMin())*0.25; // the upper and lower 10% of the range will have a spring
+    // std::cout << coord->getName() << tol << std::endl; return torque;
+    // std::cout << "T_in " << torque << " ";
+    
+    if ( q > (coord->getRangeMax() - tol) ) {
+        std::cout << "T_in " << torque << " ";
+        double x = q - (coord->getRangeMax() - tol); //displacement from upper equilibrium point
+        torque +=  Kspring * x + Bspring * u;
+        std::cout << "OVER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
+    } else if (q < (coord->getRangeMin() + tol) ) {
+        std::cout << "T_in " << torque << " ";
+        double x = q - (coord->getRangeMin() + tol); //displacement from lower equilibrium point (will be negative)
+        torque +=  Kspring * x + Bspring * u;
+        std::cout << "UNDER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
+
+    } else {
+        //motion is within permitted range, we will just give it a small damping term to stop it from oscillating
+        torque += Bfree * u;
+        std::cout << "GOOD: " << coord->getName() << " q " << q << " u " << u << " torque " << torque <<  "\n";
+    }
+
+    logger << q << " " << u  << " " << torque << std::endl;
+    return torque;
 }
 
 
