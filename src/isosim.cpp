@@ -305,7 +305,7 @@ void IsosimEngine::init(void) {
     //give an initial force
     latestForce = {0,0,1}; // Newtons
     clock_t timeAtStart = std::clock();
-    for (double i = 0; i < 5; i+= IDtimestep) {
+    for (double i = 0; i < 1e-1; i+= IDtimestep) {
         step();
     }
     clock_t midTime = std::clock();
@@ -353,7 +353,7 @@ bool IsosimEngine::generateIDModel(void) {
     // Define the initial and final simulation times //SHOULD BECOME OBSELETE IN REALTIME
     double initialTime = 0.0;
     double finalTime = 30.00 / 30;
-    const double timestep = 1e-3 * 0.10; //TODO fix this
+    const double timestep = 1e-3 ; //TODO fix this
     IDtimestep = timestep; //this should be received from control input
     currentSimTime = 0; //can be overriden by control
 
@@ -765,7 +765,7 @@ void IsosimEngine::step(void) {
     // (so we just set the latest state and that gets transmitted to commshub)
 
     #ifdef LOGGING
-        logger << FDout.timestamp << "   " ;//<< FDout.wristPos << std::endl;
+        // logger << FDout.timestamp << "   " ;//<< FDout.wristPos << std::endl;
     #endif
 
     currentSimTime += IDtimestep; //shouldn't be necessary with control input //TODO this
@@ -930,13 +930,21 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     FDModel.getMultibodySystem().realizeTopology();
 
     double step0 = state_.getTime();
+    double intTime  = integrator_->getAdvancedTime() - step0;
+    if (intTime != 0) {
+        std::cout << "NOT SAME " << intTime << "\n ";
+    }
     //step simulation
     clock_t steppingTime = std::clock();
     // SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep); //eventually will need stepTo() because we might miss timesteps
-    SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepTo(step0 + FDtimestep);
-    // std::cout << "\nstepstatus: " << SimTK::Integrator::successfulStepStatusString(result) << " \n";
+    int numreturns = 0;
+    while (integrator_->getAdvancedTime() < step0 + FDtimestep) {
     
-
+        SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep);
+        // std::cout << "\nstepstatus: " << SimTK::Integrator::successfulStepStatusString(result) << " \n";
+        numreturns++;
+    }
+    std::cout << "numreturns->" << numreturns << "  ";
     std::cout << integrator_->getAccuracyInUse() << "<-accuracy ";
 
     SimTK::State newState_ = integrator_->getAdvancedState(); //TODO: should this work with the State& state_ now that I changed it to a pointer?
@@ -945,6 +953,7 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     double stepped1 = newState_.getTime() - step0;
     std::cout << "stepped " << stepped1 << " ";
     logger << " " << stepped1 << " ";
+    logger << "  " << newState_.getTime() << "  ";
     FDModel.getVisualizer().show(newState_);
 
     //realize again so we can get state variables 
@@ -995,6 +1004,7 @@ double IsosimEngine::torqueSpring(double q, double u, double udot, double torque
         std::cout << "UNDER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
 
     } else {
+        std::cout << "T_in " << torque << " ";
         //motion is within permitted range, we will just give it a small damping term to stop it from oscillating
         torque += Bfree * u;
         std::cout << "GOOD: " << coord->getName() << " q " << q << " u " << u << " torque " << torque <<  "\n";
