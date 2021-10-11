@@ -712,7 +712,7 @@ bool IsosimEngine::generateFDModel(void) {
     
     //create manager and save it to class variable
     FDmanager = new OpenSim::Manager(FDModel);
-
+    FDmanager->setIntegratorMethod(OpenSim::Manager::IntegratorMethod::ExplicitEuler);//TODO here
     FDmanager->setIntegratorAccuracy(FDtimestep); //TODO: play around with this. If I reduce it, it might be faster
 
     FDelbowCustomJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
