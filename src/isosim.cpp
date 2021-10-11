@@ -460,7 +460,7 @@ bool IsosimEngine::generateIDModel(void) {
     
     IDmanager = new OpenSim::Manager(IDModel);
     
-    IDmanager->setIntegratorAccuracy(timestep);
+    IDmanager->setIntegratorAccuracy(timestep); //TODO: Change this to match whatever I choose for FD (not too important as we don't integrate ID)
 
     //lock joints - Only if we're performing ID first, not necessary for the direct FD method
     IDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
@@ -500,7 +500,8 @@ bool IsosimEngine::generateIDModel(void) {
     IDmanager->initialize(si);
     //get engine properties (just for our while loop here)
     SimTK::Integrator* integrator_ = &IDmanager->getIntegrator();
-
+    std::cout << "using the " << integrator_->getMethodName() << " integration method\n"; //TODO compare performance of different integrators
+    
     SimTK::State state_ =  integrator_->getAdvancedState();
 
     IDModel.getVisualizer().show(state_);
@@ -712,7 +713,7 @@ bool IsosimEngine::generateFDModel(void) {
     //create manager and save it to class variable
     FDmanager = new OpenSim::Manager(FDModel);
 
-    FDmanager->setIntegratorAccuracy(FDtimestep);
+    FDmanager->setIntegratorAccuracy(FDtimestep); //TODO: play around with this. If I reduce it, it might be faster
 
     FDelbowCustomJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
 
