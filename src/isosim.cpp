@@ -459,8 +459,8 @@ bool IsosimEngine::generateIDModel(void) {
 
     
     IDmanager = new OpenSim::Manager(IDModel);
-    
-    IDmanager->setIntegratorAccuracy(timestep); //TODO: Change this to match whatever I choose for FD (not too important as we don't integrate ID)
+    // IDmanager->setIntegratorMethod(OpenSim::Manager::IntegratorMethod::RungeKuttaFeldberg);
+    IDmanager->setIntegratorAccuracy(timestep*1e-3); //TODO: Change this to match whatever I choose for FD (not too important as we don't integrate ID)
 
     //lock joints - Only if we're performing ID first, not necessary for the direct FD method
     IDelbowJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
@@ -712,8 +712,8 @@ bool IsosimEngine::generateFDModel(void) {
     
     //create manager and save it to class variable
     FDmanager = new OpenSim::Manager(FDModel);
-    FDmanager->setIntegratorMethod(OpenSim::Manager::IntegratorMethod::ExplicitEuler);//TODO here
-    FDmanager->setIntegratorAccuracy(FDtimestep); //TODO: play around with this. If I reduce it, it might be faster
+    FDmanager->setIntegratorMethod(OpenSim::Manager::IntegratorMethod::RungeKutta2);//TODO here
+    FDmanager->setIntegratorAccuracy(FDtimestep*1e-3); //TODO: play around with this. If I reduce it, it might be faster
 
     FDelbowCustomJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
 
@@ -907,18 +907,7 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
             / FDelbowTorque.getOptimalForce();
     
 
-    //if controls are taking us past the limit, set the control to zero
-    // if ((shoulderControls1_(0) > 0 && state_.getQ()[SHOULDER_NUM] > shoulderMaxElev) ||
-    //         (shoulderControls1_(0) < 0 && state_.getQ()[SHOULDER_NUM] < shoulderMinElev)) {
-    //     shoulderControls1_(0) = 0;
-    //     std::cout << "MAXXXXXXXED"; 
-    //     // while(1) {std::cout << "hi?" << state_.getQ();}
-    // }
-    // if ((elbowControls_(0) > 0 && state_.getQ()[ELBOW_NUM] > elbowMaxFlex) ||
-    //         (elbowControls_(0) < 0 && state_.getQ()[ELBOW_NUM] < elbowMinFlex)) {
-    //     elbowControls_(0) = 0;
-    //     // std::cout << "MAXXXXXXXED"; while(1) {std::cout << "hey? ";}
-    // }
+    
 
     Vector modelControls_ = FDModel.getDefaultControls();
     FDshoulderTorque1.addInControls(shoulderControls1_,modelControls_);
@@ -939,12 +928,12 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     clock_t steppingTime = std::clock();
     // SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep); //eventually will need stepTo() because we might miss timesteps
     int numreturns = 0;
-    while (integrator_->getAdvancedTime() < step0 + FDtimestep) {
+    // while (integrator_->getAdvancedTime() < step0 + FDtimestep) {
     
         SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep);
         // std::cout << "\nstepstatus: " << SimTK::Integrator::successfulStepStatusString(result) << " \n";
-        numreturns++;
-    }
+        // numreturns++;
+    // }
     std::cout << "numreturns->" << numreturns << "  ";
     std::cout << integrator_->getAccuracyInUse() << "<-accuracy ";
 
