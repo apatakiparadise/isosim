@@ -15,6 +15,8 @@
 
 #include "IsometricExternalForce.h"
 
+#include <mutex>
+
 
 #include <fstream>
 
@@ -39,7 +41,12 @@ class IsosimROS {
         int subscriber(void);
         int publisher(void);
 
-        SimTK::Vec3 get_latest_force(void); //THREADSAFE? no
+        struct ForceInput {
+            SimTK::Vec3 force;
+            double time;
+        };
+
+        ForceInput get_latest_force(void); //THREADSAFE? no
 
         struct IsosimData {
 
@@ -56,6 +63,7 @@ class IsosimROS {
         
         void unimplemented(void);
         
+        ForceInput _latestInput;
 
 };
 
@@ -104,7 +112,7 @@ class IsosimEngine {
         OpenSim::Model FDModel;
         OpenSim::Manager* FDmanager;
         double FDtimestep; //should be same as IDtimestep
-        double currentSimTime;
+        double prevSimTime;
         
         //actuators to apply input from ID in FD model
         OpenSim::TorqueActuator FDshoulderTorque1; // shoulder elevation
@@ -140,7 +148,7 @@ class IsosimEngine {
             SimTK::Vec3 forceDirection;
         };
 
-        ID_Input forceVecToInput (SimTK::Vec3 forceVector);
+        ID_Input forceVecToInput (IsosimROS::ForceInput forceInput);
 
         
         //COMBINED FD/ID - performs forward dynamics on a non-static model while still calculating joint torques

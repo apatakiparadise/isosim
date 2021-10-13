@@ -32,8 +32,10 @@ using namespace SimTK;
 //callbacks (will need more)
 static void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
 static void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
-static SimTK::Vec3 latestForce;
 
+std::mutex fInMutex;
+static SimTK::Vec3 latestForce;
+static double latestTime;
 //public within namespace
 RosbridgeWsClient RBcppClient("localhost:9090");
 
@@ -126,12 +128,19 @@ void IsosimROS::init(void) {
     return;
 }
 
-SimTK::Vec3 IsosimROS::get_latest_force(void) {
+/* Threadsafe method to get the latest force that we've received from our subscriber thread
+*/
+IsosimROS::ForceInput IsosimROS::get_latest_force(void) {
 
-    // SimTK::Vec3 latestForce;
+    ForceInput input;
+    if (fInMutex.try_lock()) {
+        _latestInput.force = latestForce;
+        _latestInput.time = latestTime;
+    }
+    fInMutex.unlock();
 
-    //threadsafe...... not
-    return latestForce;
+    //threadsafe
+    return _latestInput;
 }
 
 bool IsosimROS::publishState(IsosimROS::IsosimData stateData) {
@@ -249,6 +258,7 @@ void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*
     
 
     assert(forceD.HasMember("msg"));
+    #ifdef TWIST_TEST
     assert(forceD["msg"].HasMember("linear"));
     
     assert(forceD["msg"]["linear"].HasMember("x"));
@@ -260,11 +270,25 @@ void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*
     double y = forceD["msg"]["linear"]["y"].GetDouble();
     double z = forceD["msg"]["linear"]["z"].GetDouble();
 
-    
+    #endif
+
+    assert(forceD["msg"].HasMember("force"));
+    assert(forceD["msg"]["force"].HasMember("x"));
+    assert(forceD["msg"].HasMember("time"));
+    assert(forceD["msg"]["force"]["x"].IsDouble());
+    assert(forceD["msg"]["time"].IsDouble());
+
+    double x = forceD["msg"]["force"]["x"].GetDouble();
+    double y = forceD["msg"]["force"]["y"].GetDouble();
+    double z = forceD["msg"]["force"]["z"].GetDouble();
+    double timestamp = forceD["msg"]["time"].GetDouble();
+
+    fInMutex.lock(); //locks mutex
+
     //save to global variable
     latestForce = {x,y,z};
-    
-
+    latestTime = timestamp;
+    fInMutex.unlock(); // unlocks mutex
 
 
     // printf("linear = %d\n", document["linear"].GetString());
@@ -286,7 +310,7 @@ void IsosimEngine::init(void) {
     //initialise communication
     commsClient.init();
 
-    generateIDModel(); //import/configure model
+    generateIDModel(); //import/configure models
 
     generateFDModel(); //
 
@@ -304,18 +328,22 @@ void IsosimEngine::init(void) {
     
     //give an initial force
     latestForce = {0,0,1}; // Newtons
+    latestTime = prevSimTime + FDtimestep;
     clock_t timeAtStart = std::clock();
     for (double i = 0; i < 1e-1; i+= IDtimestep) {
         step();
+        latestTime+= FDtimestep;
     }
     clock_t midTime = std::clock();
     latestForce = {0,0,0};
     for (double i = 0; i < 20; i+= IDtimestep) {
         step();
+        latestTime += FDtimestep;
     }
     latestForce = {0,0,0};
     for (double i = 0; i < 20; i+= IDtimestep) {
-        // step();
+        step();
+        latestTime+= FDtimestep;
     }
     
     clock_t timeAtEnd = std::clock();
@@ -355,7 +383,7 @@ bool IsosimEngine::generateIDModel(void) {
     double finalTime = 30.00 / 30;
     const double timestep = 1e-3 ; //TODO fix this
     IDtimestep = timestep; //this should be received from control input
-    currentSimTime = 0; //can be overriden by control
+    prevSimTime = 0; //can be overriden by control
 
     //import model
     IDModel =  OpenSim::Model("Models/arm26-mod.osim"); std::cout << "loaded model from arm26-mod" << std::endl;
@@ -746,31 +774,30 @@ bool IsosimEngine::generateFDModel(void) {
 void IsosimEngine::step(void) {
 
     // clock_t initTime = std::clock();
-    #ifdef IDFD
+
     //step id first using IsosimEngine::inverseD
     IsosimEngine::ID_Output IDout = inverseD();
     
+    if (IDout.valid) {
 
-    //get output torques in a form that is usable to the FD engine
+        
+        //get output torques in a form that is usable to the FD engine
 
-    //step fd using IsosimEngine::forwardD
-    IsosimEngine::FD_Output FDout = forwardD(IDout);
-    #else
-    //do the FD without bothwering with inverseD
-    // IsosimEngine::FD_Output FDout = forwardInverseD();
-    #endif
-    //publish using comms::publisher
-    commsClient.publishState(FDoutputToIsosimData(FDout));
-    
-    // (maybe this last one can be done by a callback function)
-    // (so we just set the latest state and that gets transmitted to commshub)
+        //step fd using IsosimEngine::forwardD
+        IsosimEngine::FD_Output FDout = forwardD(IDout);
+        
+        //publish using comms::publisher
+        commsClient.publishState(FDoutputToIsosimData(FDout));
+        
+        // (maybe this last one can be done by a callback function)
+        // (so we just set the latest state and that gets transmitted to commshub)
 
-    #ifdef LOGGING
-        // logger << FDout.timestamp << "   " ;//<< FDout.wristPos << std::endl;
-    #endif
-
-    currentSimTime += IDtimestep; //shouldn't be necessary with control input //TODO this
-
+        #ifdef LOGGING
+            // logger << FDout.timestamp << "   " ;//<< FDout.wristPos << std::endl;
+        #endif
+        
+        prevSimTime = IDout.timestamp; //shouldn't be necessary with control input //TODO this
+    }
     // double stepTime = ((double) (std::clock() - initTime))/CLOCKS_PER_SEC;
     // std::cout << "STEPPED IN " << stepTime << " seconds! that's " << (std::clock() - initTime) << " clocks \n";
 }
@@ -783,7 +810,11 @@ IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
     output.valid = false; //change to true later if data
     output.timestamp = input.timestamp;
 
-
+    if (input.timestamp <= prevSimTime) {
+        std::cout << "time stayed at " << output.timestamp << std::endl;
+        //we haven't progressed
+        return output; //output set to invalid
+    }
 
 
     SimTK::Integrator* integrator_ = &IDmanager->getIntegrator();
@@ -824,16 +855,16 @@ IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
 }
 
 
-IsosimEngine::ID_Input IsosimEngine::forceVecToInput (SimTK::Vec3 forceVector) {
+IsosimEngine::ID_Input IsosimEngine::forceVecToInput(IsosimROS::ForceInput forceInput) {
 
     IsosimEngine::ID_Input input;
-    input.timestamp = currentSimTime;
+    input.timestamp = forceInput.time;
 
-    input.forceMag = sqrt(~forceVector * forceVector);
+    input.forceMag = sqrt(~forceInput.force * forceInput.force);
     if (input.forceMag == 0) {
         input.forceDirection = {1,1,1}; //no force anyway
     } else {
-        input.forceDirection = forceVector / input.forceMag;
+        input.forceDirection = forceInput.force / input.forceMag;
     }
 
     return input;
