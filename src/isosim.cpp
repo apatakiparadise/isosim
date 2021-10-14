@@ -313,7 +313,7 @@ void IsosimEngine::init(void) {
     programState = ISOSIM_STANDBY;
 
     //initialise communication
-    commsClient.init();
+    // commsClient.init();
 
     generateIDModel(); //import/configure models
 
@@ -330,14 +330,17 @@ void IsosimEngine::init(void) {
         logger << "ISOSIM DATA\n DATE: " << asctime(curtime) << "\nTIMESTAMP Q\n";
     #endif
 
+    auto startStepClock = std::chrono::steady_clock::now();
     
     //give an initial force
-    latestForce = {0,0,10}; // Newtons
+    latestForce = {0,0,100}; // Newtons
     latestTime = prevSimTime + FDtimestep;
+    int stepsTaken = 0;
     clock_t timeAtStart = std::clock();
-    for (double i = 0; i < 0.01; i+= FDtimestep) {
+    for (double i = 0; i < 20; i+= FDtimestep) {
         step();
         latestTime+= FDtimestep;
+        stepsTaken++;
     }
     clock_t midTime = std::clock();
     latestForce = {0,0,0};
@@ -352,9 +355,15 @@ void IsosimEngine::init(void) {
     // }
     
     clock_t timeAtEnd = std::clock();
-    std::cout << "Final SimTime: " << latestTime;
+    std::cout << "Final SimTime: " << latestTime << " after " << stepsTaken << " iterations\n";
     // std::cout << "Completed forward test in " << ((double) (midTime - timeAtStart))/CLOCKS_PER_SEC << " seconds\n";
-    std::cout << "Time taken to perform sim: " << _clock_secs(midTime - timeAtStart) << " seconds\n";
+
+    auto finishStepClock = std::chrono::steady_clock::now();
+    std::chrono::duration<double> stepDuration = std::chrono::duration_cast<std::chrono::duration<double>>(finishStepClock - startStepClock);
+
+    std::cout << "Time taken to perform sim: " << stepDuration.count() << "wall seconds";
+    std::cout << "or " << _clock_secs(midTime - timeAtStart) << " clock secs\n";
+    
     std::cout << "Completed backward test in " << ((double) (timeAtEnd - timeAtStart))/CLOCKS_PER_SEC << " seconds\n";
 
     
@@ -391,7 +400,7 @@ bool IsosimEngine::generateIDModel(void) {
     // Define the initial and final simulation times //SHOULD BECOME OBSELETE IN REALTIME
     double initialTime = 0.0;
     double finalTime = 30.00 / 30;
-    const double timestep = 1e-3 ; //TODO fix this
+    const double timestep = 1e-3;// * 100; //TODO fix this
     IDtimestep = timestep; //this should be received from control input
     prevSimTime = 0; //can be overriden by control
 
@@ -774,12 +783,15 @@ bool IsosimEngine::generateFDModel(void) {
 
     FDmanager->initialize(si);
     
-    _FDintegr.reset(new SimTK::RungeKuttaMersonIntegrator(FDModel.getMultibodySystem()));
+    _FDintegr.reset(new SimTK::SemiExplicitEulerIntegrator(FDModel.getMultibodySystem(), FDtimestep));
+    _FDintegr->setAccuracy(1e-3);
     _FDstepper.reset(new SimTK::TimeStepper(FDModel.getMultibodySystem(),*_FDintegr));
     _FDstepper->initialize(si);
 
     
     FDModel.getVisualizer().show(si);
+
+    OpenSim::Logger::setLevel(OpenSim::Logger::Level::Off); //Not Useful
     
     std::cout << "FDmodel generated\n";
 
@@ -792,6 +804,7 @@ bool IsosimEngine::generateFDModel(void) {
 void IsosimEngine::step(void) {
 
     clock_t initTime = std::clock();
+    auto startStepClock = std::chrono::steady_clock::now();
 
     //step id first using IsosimEngine::inverseD
     IsosimEngine::ID_Output IDout = inverseD();
@@ -816,7 +829,11 @@ void IsosimEngine::step(void) {
         
         prevSimTime = IDout.timestamp; //shouldn't be necessary with control input //TODO this
 
-        // std::cerr << "\n in \n" << ((double)(std::clock() - initTime) / CLOCKS_PER_SEC) << "s ";
+        auto finishStepClock = std::chrono::steady_clock::now();
+        std::chrono::duration<double> stepDuration = std::chrono::duration_cast<std::chrono::duration<double>>(finishStepClock - startStepClock);
+        // std::cerr << " in " << ((double)(std::clock() - initTime) / CLOCKS_PER_SEC) << "clocl secs ";
+        std::cout << " or " << stepDuration.count() << std::endl;
+
     }
     // double stepTime = ((double) (std::clock() - initTime))/CLOCKS_PER_SEC;
     // std::cout << "STEPPED IN " << stepTime << " seconds! that's " << (std::clock() - initTime) << " clocks \n";
@@ -894,6 +911,7 @@ IsosimEngine::ID_Input IsosimEngine::forceVecToInput(IsosimROS::ForceInput force
 
 
 IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
+auto tim0 = std::chrono::steady_clock::now();
 
     clock_t FDstartTime = std::clock();
 
@@ -929,7 +947,6 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
     
     FDModel.getMultibodySystem().realize(state_, Stage::Acceleration);
-
 
     Vector shoulderControls1_(1);
     Vector shoulderControls2_(1);
@@ -969,7 +986,13 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
     FDModel.setControls(state_,modelControls_);
 
+auto tim22 = std::chrono::steady_clock::now();
+    
+
+
     FDModel.getMultibodySystem().realizeTopology();
+
+
 
     double step0 = state_.getTime();
     double intTime  = integrator_->getAdvancedTime() - step0;
@@ -979,26 +1002,30 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
     //step simulation
     clock_t steppingTime = std::clock();
+    auto tim1 =  std::chrono::steady_clock::now();
     // SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep); //eventually will need stepTo() because we might miss timesteps
     int numreturns = 0;
     // while (integrator_->getAdvancedTime() < step0 + FDtimestep) {
     
-        // SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep);
-        _FDstepper->stepTo(prevSimTime + FDtimestep);
+        SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep);
+        // _FDstepper->stepTo(prevSimTime + FDtimestep);
         // std::cout << "\nstepstatus: " << SimTK::Integrator::successfulStepStatusString(result) << " \n";
         // numreturns++;
     // }
     // std::cout << "numreturns->" << numreturns << "  ";
     // std::cout << integrator_->getAccuracyInUse() << "<-accuracy ";
     // std::cout << prevSimTime << "<-time ";
-
+    auto tim2 = std::chrono::steady_clock::now();
+    
     SimTK::State newState_ = integrator_->getAdvancedState(); //TODO: should this work with the State& state_ now that I changed it to a pointer?
                                                             //TODO: actually, didn't I change it to a pointer??? I thought I called updAdvancedState().... not sure what's happening here
 
     double stepped1 = newState_.getTime() - step0;
-    // std::cout << "stepped " << stepped1 << " ";
-    logger << " " << stepped1 << " ";
-    logger << "  " << newState_.getTime() << "  ";
+    std::cout << "stepped " << stepped1 << " ";
+    #ifdef LOGGING
+        logger << " " << stepped1 << " ";
+        logger << "  " << newState_.getTime() << "  ";
+    #endif
     FDModel.getVisualizer().show(newState_);
 
     //realize again so we can get state variables 
@@ -1013,8 +1040,11 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
         output.valid = true;
     }
 
-
+    
     // std::cout << " in " << ((double)(std::clock() - FDstartTime) / CLOCKS_PER_SEC) << "s ";
+// auto tim3 = std::chrono::steady_clock::now();
+//     std::chrono::duration<double> steppingDur = std::chrono::duration_cast<std::chrono::duration<double>>(tim2 - tim22);
+//     std::cout << "stepdur " << steppingDur.count() << "secs" << std::endl;
 
 
     return output;
@@ -1058,8 +1088,9 @@ double IsosimEngine::torqueSpring(double q, double u, double udot, double torque
         torque += Bfree * u;
         // std::cout << "GOOD: " << coord->getName() << " q " << q << " u " << u << " torque " << torque <<  "\n";
     }
-
-    logger << q << " " << u  << " " << torque << std::endl;
+    #ifdef LOGGING
+        logger << q << " " << u  << " " << torque << std::endl;
+    #endif
     return torque;
 }
 
