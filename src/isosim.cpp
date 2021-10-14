@@ -13,7 +13,9 @@
 #include "isosim.h"
 
 #include <ctime>
+#include <chrono>
 
+typedef std::chrono::high_resolution_clock Clock;
 
 #define LOGGING
 
@@ -28,6 +30,9 @@ using namespace SimTK;
 
 // namespace isosim{
 
+
+/*converts clock ticks into seconds */
+double _clock_secs(clock_t ctim) ;
 
 //callbacks (will need more)
 static void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
@@ -327,29 +332,33 @@ void IsosimEngine::init(void) {
 
     
     //give an initial force
-    latestForce = {0,0,1}; // Newtons
+    latestForce = {0,0,10}; // Newtons
     latestTime = prevSimTime + FDtimestep;
     clock_t timeAtStart = std::clock();
-    for (double i = 0; i < 1e-1; i+= IDtimestep) {
+    for (double i = 0; i < 0.01; i+= FDtimestep) {
         step();
         latestTime+= FDtimestep;
     }
     clock_t midTime = std::clock();
     latestForce = {0,0,0};
-    for (double i = 0; i < 20; i+= IDtimestep) {
-        step();
-        latestTime += FDtimestep;
-    }
-    latestForce = {0,0,0};
-    for (double i = 0; i < 20; i+= IDtimestep) {
-        step();
-        latestTime+= FDtimestep;
-    }
+    // for (double i = 0; i < 20; i+= IDtimestep) {
+    //     step();
+    //     latestTime += FDtimestep;
+    // }
+    // latestForce = {0,0,0};
+    // for (double i = 0; i < 20; i+= IDtimestep) {
+    //     step();
+    //     latestTime+= FDtimestep;
+    // }
     
     clock_t timeAtEnd = std::clock();
-
-    std::cout << "Completed forward test in " << ((double) (midTime - timeAtStart))/CLOCKS_PER_SEC << " seconds\n";
+    std::cout << "Final SimTime: " << latestTime;
+    // std::cout << "Completed forward test in " << ((double) (midTime - timeAtStart))/CLOCKS_PER_SEC << " seconds\n";
+    std::cout << "Time taken to perform sim: " << _clock_secs(midTime - timeAtStart) << " seconds\n";
     std::cout << "Completed backward test in " << ((double) (timeAtEnd - timeAtStart))/CLOCKS_PER_SEC << " seconds\n";
+
+    
+
 }
 
 int IsosimEngine::get_state(void) {
@@ -368,8 +377,9 @@ void IsosimEngine::loop(void) {
 
     while(1) {
         // std::cout << "forcefromcomms" << commsClient.get_latest_force() << std::endl;
+        clock_t tim = std::clock();
         std::this_thread::sleep_for(std::chrono::seconds(1));
-
+        std::cout << "\nslept for : " << (std::clock() - tim);
     }
 ;
 }
@@ -743,6 +753,8 @@ bool IsosimEngine::generateFDModel(void) {
     FDmanager->setIntegratorMethod(OpenSim::Manager::IntegratorMethod::RungeKutta2);//TODO here
     FDmanager->setIntegratorAccuracy(FDtimestep*1e-3); //TODO: play around with this. If I reduce it, it might be faster
 
+    
+
     FDelbowCustomJoint.getCoordinate().setValue(si,convertDegreesToRadians(90));
 
     //clamp joints to within limits
@@ -755,12 +767,18 @@ bool IsosimEngine::generateFDModel(void) {
     
     
     FDModel.print("FDisosimModel.osim");
-    FDModel.printDetailedInfo(si, std::cout);
-   
+    // FDModel.printDetailedInfo(si, std::cout);
+
    
     si.setTime(initialTime);
-    FDmanager->initialize(si);
 
+    FDmanager->initialize(si);
+    
+    _FDintegr.reset(new SimTK::RungeKuttaMersonIntegrator(FDModel.getMultibodySystem()));
+    _FDstepper.reset(new SimTK::TimeStepper(FDModel.getMultibodySystem(),*_FDintegr));
+    _FDstepper->initialize(si);
+
+    
     FDModel.getVisualizer().show(si);
     
     std::cout << "FDmodel generated\n";
@@ -773,7 +791,7 @@ bool IsosimEngine::generateFDModel(void) {
 
 void IsosimEngine::step(void) {
 
-    // clock_t initTime = std::clock();
+    clock_t initTime = std::clock();
 
     //step id first using IsosimEngine::inverseD
     IsosimEngine::ID_Output IDout = inverseD();
@@ -797,6 +815,8 @@ void IsosimEngine::step(void) {
         #endif
         
         prevSimTime = IDout.timestamp; //shouldn't be necessary with control input //TODO this
+
+        // std::cerr << "\n in \n" << ((double)(std::clock() - initTime) / CLOCKS_PER_SEC) << "s ";
     }
     // double stepTime = ((double) (std::clock() - initTime))/CLOCKS_PER_SEC;
     // std::cout << "STEPPED IN " << stepTime << " seconds! that's " << (std::clock() - initTime) << " clocks \n";
@@ -891,8 +911,8 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
 
     // std::cout << "INPUT PROPERTIES\n resmob: " << input.residualMobilityForces << "timestamp: " << input.timestamp << "valid?: " << input.valid << std::endl;
 
-    SimTK::Integrator* integrator_ = &FDmanager->getIntegrator();
-
+    // SimTK::Integrator* integrator_ = &FDmanager->getIntegrator(); //when using manager (no stepper)
+    SimTK::Integrator* integrator_ = _FDintegr.get(); //when using stepper
     
 
     const SimTK::State& state_ = integrator_->getAdvancedState(); //this needs to be a pointer, since we plan on doing fun things to it
@@ -927,6 +947,7 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     SimTK::Vector uVec_ = state_.getU();
     SimTK::Vector uDVec_ = state_.getUDot();
 
+
     // shoulderControls1_(0) = torqueSpring(qVec_(SHOULDER_ELEV_QNUM), uVec_(SHOULDER_ELEV_QNUM), uDVec_(SHOULDER_ELEV_QNUM),
     //         input.residualMobilityForces(SHOULDER_ELEV_QNUM), &FDshoulderCustomJoint.get_coordinates(0))
     //         / FDshoulderTorque1.getOptimalForce();
@@ -955,24 +976,27 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     if (intTime != 0) {
         std::cout << "NOT SAME " << intTime << "\n ";
     }
+
     //step simulation
     clock_t steppingTime = std::clock();
     // SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep); //eventually will need stepTo() because we might miss timesteps
     int numreturns = 0;
     // while (integrator_->getAdvancedTime() < step0 + FDtimestep) {
     
-        SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep);
+        // SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep);
+        _FDstepper->stepTo(prevSimTime + FDtimestep);
         // std::cout << "\nstepstatus: " << SimTK::Integrator::successfulStepStatusString(result) << " \n";
         // numreturns++;
     // }
-    std::cout << "numreturns->" << numreturns << "  ";
-    std::cout << integrator_->getAccuracyInUse() << "<-accuracy ";
+    // std::cout << "numreturns->" << numreturns << "  ";
+    // std::cout << integrator_->getAccuracyInUse() << "<-accuracy ";
+    // std::cout << prevSimTime << "<-time ";
 
     SimTK::State newState_ = integrator_->getAdvancedState(); //TODO: should this work with the State& state_ now that I changed it to a pointer?
                                                             //TODO: actually, didn't I change it to a pointer??? I thought I called updAdvancedState().... not sure what's happening here
 
     double stepped1 = newState_.getTime() - step0;
-    std::cout << "stepped " << stepped1 << " ";
+    // std::cout << "stepped " << stepped1 << " ";
     logger << " " << stepped1 << " ";
     logger << "  " << newState_.getTime() << "  ";
     FDModel.getVisualizer().show(newState_);
@@ -988,6 +1012,10 @@ IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
     if (output.elbowPos.size() > 0) {
         output.valid = true;
     }
+
+
+    // std::cout << " in " << ((double)(std::clock() - FDstartTime) / CLOCKS_PER_SEC) << "s ";
+
 
     return output;
 
@@ -1025,10 +1053,10 @@ double IsosimEngine::torqueSpring(double q, double u, double udot, double torque
         std::cout << "UNDER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
 
     } else {
-        std::cout << "T_in " << torque << " ";
+        // std::cout << "T_in " << torque << " ";
         //motion is within permitted range, we will just give it a small damping term to stop it from oscillating
         torque += Bfree * u;
-        std::cout << "GOOD: " << coord->getName() << " q " << q << " u " << u << " torque " << torque <<  "\n";
+        // std::cout << "GOOD: " << coord->getName() << " q " << q << " u " << u << " torque " << torque <<  "\n";
     }
 
     logger << q << " " << u  << " " << torque << std::endl;
@@ -1189,6 +1217,19 @@ void IsosimEngine::testPointActuator(void) {
 
 
 
+//PRIVATE HELPER FUNCTIONS
 
+/*converts clock ticks into seconds */
+double _clock_secs(clock_t ctim) {
+    double tim = (double) ctim;
+    double cps =  CLOCKS_PER_SEC;
+    double res = tim/cps;
+    
+
+    return res;
+
+
+    // return (double) ((double) ctim) / ((double) CLOCKS_PER_SEC) ;
+}
 
 // } //namespace isosim
