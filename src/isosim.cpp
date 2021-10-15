@@ -37,10 +37,16 @@ double _clock_secs(clock_t ctim) ;
 //callbacks (will need more)
 static void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
 static void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
+static void positionPublisherThread(RosbridgeWsClient& client, const std::future<void>& futureObj);
+bool publishState(IsosimROS::IsosimData stateData);
+
 
 std::mutex fInMutex;
-static SimTK::Vec3 latestForce;
-static double latestTime;
+static SimTK::Vec3 latestForce; //not threadsafe! use mutex
+static double latestTime; //not threadsafe! use mutex
+std::mutex posOutMutex;
+static IsosimROS::IsosimData latestPositionData; // should be accessed only through mutex!!
+static bool _newPosAvailable; //represents whether the data in latestPositionData has been published yet (use only with mutex!)
 //public within namespace
 RosbridgeWsClient RBcppClient("localhost:9090");
 
@@ -97,9 +103,12 @@ int main(void) {
  * **********************************************************************************************************************************
 *************************************************************************************************************************************/
 
+/* This and other rosbridgecpp functions are created based on the rosbridgecpp library and example code
+    See licences for details
+    */
 void IsosimROS::init(void) {
 
-    std::cout << "isosim init" << std::endl;
+    std::cout << "isosim comms init..." ;
     //do nothing
     // RosbridgeWsClient RBcppClient("localhost:9090");
     // RBcppClientptr = &RBcppClient;
@@ -117,12 +126,21 @@ void IsosimROS::init(void) {
     RBcppClient.advertise("topic_advertiser", "/isosimtopic", "franka_panda_controller_swc/IsosimOutput");
 
 
-    RBcppClient.addClient("topic_subscriber");
+    RBcppClient.addClient("topic_subscriber"); //TODO: put this in its own thread
     RBcppClient.subscribe("topic_subscriber", "/twistfromCMD",forceSubscriberCallback);
 
     //publish some data     roslaunch rosbridge_server rosbridge_websocket.launch
 
-    RBcppClient.addClient("test_publisher");  //TODO: what does this publisher client actually do? and where???
+    // RBcppClient.addClient("test_publisher");  //TODO: what does this publisher client actually do? and where???
+    
+    
+
+    // Fetch std::future object associated with promise
+    futureObj = pubExitSignal.get_future();
+
+    pubTh = new std::thread(&positionPublisherThread, std::ref(RBcppClient), std::cref(futureObj));
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::cout << " ...threads/clients created\n";
     // rapidjson::Document d;
     // d.SetObject();
     // d.AddMember("data", "Test message from /isosimtopic", d.GetAllocator());
@@ -130,6 +148,9 @@ void IsosimROS::init(void) {
     //     RBcppClient.publish("/isosimtopic",d);
     //     std::this_thread::sleep_for(std::chrono::seconds(100));
     // }
+
+
+    
     return;
 }
 
@@ -148,7 +169,24 @@ IsosimROS::ForceInput IsosimROS::get_latest_force(void) {
     return _latestInput;
 }
 
-bool IsosimROS::publishState(IsosimROS::IsosimData stateData) {
+//threadsafe function to add the latest force to publishing queue
+bool IsosimROS::setPositionToPublish(IsosimData stateData) {
+
+    if (posOutMutex.try_lock()) {
+        latestPositionData = stateData;
+        
+        _newPosAvailable = true; //mark that there's a new position available
+                        //NOTE: if the publisher hasn't published
+                                // the previous data point
+                                // then it will be overwritten
+        
+        posOutMutex.unlock();
+        return true; //position recorded
+    }
+    return false; // position not recorded (mutex was already locked)
+}
+
+bool publishState(IsosimROS::IsosimData stateData) {
 
     if (stateData.valid == false) {
 
@@ -205,7 +243,12 @@ bool IsosimROS::publishState(IsosimROS::IsosimData stateData) {
 // rostopic pub -r 10 /twistfromCMD geometry_msgs/Twist  "{linear:  {x: 0.1, y: 0.0, z: 0.0}, angular: {x: 0.0,y: 0.0, z: 0.0}}"
 // roslaunch rosbridge_server rosbridge_websocket.launch
 
+//deletes threads when program exits
+IsosimROS::~IsosimROS() {
+    pubExitSignal.set_value();
+    pubTh->join();
 
+}
 
 
 //private definitions
@@ -299,6 +342,36 @@ void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*
     // printf("linear = %d\n", document["linear"].GetString());
 }
 
+void positionPublisherThread(RosbridgeWsClient& client, const std::future<void>& futureObj) {
+
+    std::cout << "pos publisher";
+
+    client.addClient("position_publisher");
+
+    IsosimROS::IsosimData data;
+    bool newData = false;
+    while(futureObj.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout) {
+        
+        if (posOutMutex.try_lock()) {
+                if (_newPosAvailable) {
+                    data = latestPositionData;
+                    newData = true; //for this thread's reference
+                    _newPosAvailable = false; // we've accessed this data point, so mark it as old
+                }
+            posOutMutex.unlock();
+        }
+        if (newData) {
+            publishState(data);
+            newData = false;            
+            // std::cout << "             PUBTHREAD: pubbed!";
+        }
+        
+    }
+
+    std::cout << "publisher thread has stopped" << std::endl;
+
+    return;
+}
 
 
 /*****************************************************************************************************************************
@@ -313,7 +386,7 @@ void IsosimEngine::init(void) {
     programState = ISOSIM_STANDBY;
 
     //initialise communication
-    // commsClient.init();
+    commsClient.init();
 
     generateIDModel(); //import/configure models
 
@@ -501,8 +574,8 @@ bool IsosimEngine::generateIDModel(void) {
 
 
     //reporters
-    OpenSim::ForceReporter* forceRep = new OpenSim::ForceReporter(&IDModel);
-    IDModel.updAnalysisSet().adoptAndAppend(forceRep);
+    // OpenSim::ForceReporter* forceRep = new OpenSim::ForceReporter(&IDModel);
+    // IDModel.updAnalysisSet().adoptAndAppend(forceRep);
 
     
     IDmanager = new OpenSim::Manager(IDModel);
@@ -818,10 +891,8 @@ void IsosimEngine::step(void) {
         IsosimEngine::FD_Output FDout = forwardD(IDout);
         
         //publish using comms::publisher
-        commsClient.publishState(FDoutputToIsosimData(FDout));
+        commsClient.setPositionToPublish(FDoutputToIsosimData(FDout));
         
-        // (maybe this last one can be done by a callback function)
-        // (so we just set the latest state and that gets transmitted to commshub)
 
         #ifdef LOGGING
             // logger << FDout.timestamp << "   " ;//<< FDout.wristPos << std::endl;

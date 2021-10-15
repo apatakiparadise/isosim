@@ -16,9 +16,11 @@
 #include "IsometricExternalForce.h"
 
 #include <mutex>
-
+#include <future>
+#include <thread>
 
 #include <fstream>
+
 
 #define ISOSIM_STANDBY 0
 #define ISOSIM_RUN 1
@@ -57,14 +59,24 @@ class IsosimROS {
             bool valid;
         };
 
-        bool publishState(IsosimData stateData);
+        bool setPositionToPublish(IsosimData stateData);
+
+
+        ~IsosimROS();
 
     private:
+
+        //publishes state (use inside publisher thread)
+        // bool publishState(IsosimData stateData);
         
-        void unimplemented(void);
         
         ForceInput _latestInput;
 
+        //repeatedly publishes position, until pubExitSignal is received
+        // void positionPublisherThread(RosbridgeWsClient& client, const std::future<void>& futureObj);
+        std::promise<void> pubExitSignal;
+        std::thread* pubTh;
+        std::future<void> futureObj;
 };
 
 class IsosimEngine {
