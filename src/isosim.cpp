@@ -247,6 +247,7 @@ bool publishState(IsosimROS::IsosimData stateData) {
 IsosimROS::~IsosimROS() {
     pubExitSignal.set_value();
     pubTh->join();
+    std::cerr << "EXITING ISOSIMROS\n";
 
 }
 
@@ -350,7 +351,7 @@ void positionPublisherThread(RosbridgeWsClient& client, const std::future<void>&
 
     IsosimROS::IsosimData data;
     bool newData = false;
-    while(futureObj.wait_for(std::chrono::milliseconds(1)) == std::future_status::timeout) {
+    while(futureObj.wait_for(std::chrono::microseconds(500)) == std::future_status::timeout) {
         
         if (posOutMutex.try_lock()) {
                 if (_newPosAvailable) {
@@ -368,6 +369,7 @@ void positionPublisherThread(RosbridgeWsClient& client, const std::future<void>&
         
     }
 
+    client.removeClient("position_publisher");
     std::cout << "publisher thread has stopped" << std::endl;
 
     return;
