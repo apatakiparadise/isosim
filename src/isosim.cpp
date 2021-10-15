@@ -49,7 +49,7 @@ static IsosimROS::IsosimData latestPositionData; // should be accessed only thro
 static bool _newPosAvailable; //represents whether the data in latestPositionData has been published yet (use only with mutex!)
 //public within namespace
 RosbridgeWsClient RBcppClient("localhost:9090");
-
+// RosbridgeWsClient RBcppClient("192.168.0.1");
 
 //order of joints in system state Q/Qdot/Udot vectors
 #define SHOULDER_ELEV_QNUM 0
@@ -121,13 +121,13 @@ void IsosimROS::init(void) {
 
     RBcppClient.addClient("service_advertiser");
     RBcppClient.advertiseService("service_advertiser", "/isosimservice", "std_srvs/SetBool", advertiserCallback);
-
+    
     RBcppClient.addClient("topic_advertiser");
-    RBcppClient.advertise("topic_advertiser", "/isosimtopic", "franka_panda_controller_swc/IsosimOutput");
+    RBcppClient.advertise("topic_advertiser", "/isosimtopic", "franka_panda_controller_swc/ArmJointPos");
 
 
     RBcppClient.addClient("topic_subscriber"); //TODO: put this in its own thread
-    RBcppClient.subscribe("topic_subscriber", "/twistfromCMD",forceSubscriberCallback);
+    RBcppClient.subscribe("topic_subscriber", "cartesian_impedance_controller_NR/force_output",forceSubscriberCallback);
 
     //publish some data     roslaunch rosbridge_server rosbridge_websocket.launch
 
@@ -234,7 +234,7 @@ bool publishState(IsosimROS::IsosimData stateData) {
     d.AddMember("time",timestamp,d.GetAllocator());
     
 
-
+    std::cout << "    published stuff to /isosimtopic   ";
     RBcppClient.publish("/isosimtopic",d);
 
     return true; //when should we return false? //TODO
