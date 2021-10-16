@@ -127,8 +127,8 @@ void IsosimROS::init(void) {
 
 
     RBcppClient.addClient("topic_subscriber"); //TODO: put this in its own thread
-    RBcppClient.subscribe("topic_subscriber", "cartesian_impedance_controller_NR/force_output",forceSubscriberCallback);
-
+    // RBcppClient.subscribe("topic_subscriber", "cartesian_impedance_controller_NR/force_output",forceSubscriberCallback);
+    RBcppClient.subscribe("topic_subscriber", "/ROSforceOutput",forceSubscriberCallback);
     //publish some data     roslaunch rosbridge_server rosbridge_websocket.launch
 
     // RBcppClient.addClient("test_publisher");  //TODO: what does this publisher client actually do? and where???
@@ -279,7 +279,8 @@ void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, st
 
 
 void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message)
-{
+{  
+    #define DEBUG
     #ifdef DEBUG
     std::cout << "subscriberCallback(): Message Received: " << in_message->string() << std::endl;
     #endif
