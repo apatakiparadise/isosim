@@ -48,7 +48,9 @@ class IsosimROS {
             double time;
         };
 
-        ForceInput get_latest_force(void); //THREADSAFE? no
+        ForceInput get_latest_force(void); //THREADSAFE
+
+        bool set_latest_force_time(SimTK::Vec3 forceIn, double tim); //THREADSAFE
 
         struct IsosimData {
 

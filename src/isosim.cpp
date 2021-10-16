@@ -42,11 +42,11 @@ bool publishState(IsosimROS::IsosimData stateData);
 
 
 std::mutex fInMutex;
-static SimTK::Vec3 latestForce; //not threadsafe! use mutex
-static double latestTime; //not threadsafe! use mutex
+static SimTK::Vec3 latestForce; //not threadsafe! use fInMutex
+static double latestTime; //not threadsafe! use fInMutex
 std::mutex posOutMutex;
-static IsosimROS::IsosimData latestPositionData; // should be accessed only through mutex!!
-static bool _newPosAvailable; //represents whether the data in latestPositionData has been published yet (use only with mutex!)
+static IsosimROS::IsosimData latestPositionData; // should be accessed only through posOutMutex!!
+static bool _newPosAvailable; //represents whether the data in latestPositionData has been published yet (use only with posOutMutex!)
 //public within namespace
 RosbridgeWsClient RBcppClient("localhost:9090");
 // RosbridgeWsClient RBcppClient("192.168.0.1");
@@ -116,8 +116,12 @@ void IsosimROS::init(void) {
 
     // static SimTK::Vec3 ForceVar(0,0,0);
     // latestForce = &ForceVar;
-    SimTK::Vec3 latestForce;
-    latestForce = {0,0,0};
+    // SimTK::Vec3 latestForce;
+    if (fInMutex.try_lock()) {
+        latestForce = {0,0,0};
+        fInMutex.unlock();
+    }
+    
 
     RBcppClient.addClient("service_advertiser");
     RBcppClient.advertiseService("service_advertiser", "/isosimservice", "std_srvs/SetBool", advertiserCallback);
@@ -158,7 +162,6 @@ void IsosimROS::init(void) {
 */
 IsosimROS::ForceInput IsosimROS::get_latest_force(void) {
 
-    ForceInput input;
     if (fInMutex.try_lock()) {
         _latestInput.force = latestForce;
         _latestInput.time = latestTime;
@@ -168,6 +171,20 @@ IsosimROS::ForceInput IsosimROS::get_latest_force(void) {
     //threadsafe
     return _latestInput;
 }
+/*
+Threadsafe method to set the latest force (alternative to callback fn)
+*/
+bool IsosimROS::set_latest_force_time(SimTK::Vec3 forceIn, double tim) {
+
+    if (fInMutex.try_lock()) {
+        latestForce = forceIn;
+        latestTime = tim;
+        fInMutex.unlock();
+        return true;
+    }
+    return false;
+}
+
 
 //threadsafe function to add the latest force to publishing queue
 bool IsosimROS::setPositionToPublish(IsosimData stateData) {
@@ -229,8 +246,8 @@ bool publishState(IsosimROS::IsosimData stateData) {
     timestamp.SetDouble(stateData.timestamp);
 
     //add values to d
-    d.AddMember("wristPos",wristVec,d.GetAllocator());
-    d.AddMember("elbowPos",elbowVec,d.GetAllocator());
+    d.AddMember("wrist",wristVec,d.GetAllocator());
+    d.AddMember("elbow",elbowVec,d.GetAllocator());
     d.AddMember("time",timestamp,d.GetAllocator());
     
 
@@ -333,13 +350,15 @@ void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*
     double z = forceD["msg"]["force"]["z"].GetDouble();
     double timestamp = forceD["msg"]["time"].GetDouble();
 
-    fInMutex.lock(); //locks mutex
 
-    //save to global variable
-    latestForce = {x,y,z};
-    latestTime = timestamp;
-    fInMutex.unlock(); // unlocks mutex
+    {
+        fInMutex.lock(); //locks mutex
 
+        //save to global variable
+        latestForce = {x,y,z};
+        latestTime = timestamp;
+        fInMutex.unlock(); // unlocks mutex
+    }
 
     // printf("linear = %d\n", document["linear"].GetString());
 }
@@ -352,6 +371,7 @@ void positionPublisherThread(RosbridgeWsClient& client, const std::future<void>&
 
     IsosimROS::IsosimData data;
     bool newData = false;
+    // std::this_thread::sleep_for(std::chrono::seconds(10)); std::cout << "pub thread: ready for data";
     while(futureObj.wait_for(std::chrono::microseconds(500)) == std::future_status::timeout) {
         
         if (posOutMutex.try_lock()) {
@@ -409,17 +429,21 @@ void IsosimEngine::init(void) {
     auto startStepClock = std::chrono::steady_clock::now();
     
     //give an initial force
-    latestForce = {0,0,100}; // Newtons
-    latestTime = prevSimTime + FDtimestep;
+    commsClient.set_latest_force_time({0,0,100},prevSimTime + FDtimestep);
+    // latestForce = {0,0,100}; // Newtons
+    // latestTime = prevSimTime + FDtimestep;
     int stepsTaken = 0;
     clock_t timeAtStart = std::clock();
     for (double i = 0; i < 20; i+= FDtimestep) {
         step();
-        latestTime+= FDtimestep;
+        commsClient.set_latest_force_time({0,0,100},prevSimTime + FDtimestep);
+
+        // latestTime+= FDtimestep;
         stepsTaken++;
     }
     clock_t midTime = std::clock();
-    latestForce = {0,0,0};
+    // latestForce = {0,0,0};
+    commsClient.set_latest_force_time({0,0,100},prevSimTime + FDtimestep);
     // for (double i = 0; i < 20; i+= IDtimestep) {
     //     step();
     //     latestTime += FDtimestep;
@@ -829,7 +853,7 @@ bool IsosimEngine::generateFDModel(void) {
     FDelbowTorque.addInControls(elbowControls, modelControls);
 
     //initialise model and get state
-    FDModel.setUseVisualizer(true);
+    FDModel.setUseVisualizer(true); std::cout << "using FD visualiser\n";
     SimTK::State& si = FDModel.initSystem();
 
     
