@@ -251,7 +251,7 @@ bool publishState(IsosimROS::IsosimData stateData) {
     d.AddMember("time",timestamp,d.GetAllocator());
     
 
-    std::cout << "    published stuff to /isosimtopic   ";
+    // std::cout << "    published stuff to /isosimtopic   ";
     RBcppClient.publish("/isosimtopic",d);
 
     return true; //when should we return false? //TODO
@@ -297,16 +297,20 @@ void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, st
 
 void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message)
 {  
-    #define DEBUG
+    #undef DEBUG
     #ifdef DEBUG
-    std::cout << "subscriberCallback(): Message Received: " << in_message->string() << std::endl;
-    #endif
+    std::cout << "subscriberCallback(): Message Received: " << in_message->string() << std::endl; //THIS DESTROYS THE BUFFER AND SO CAN ONLY BE CALLED ONCE
+    #endif 
+    #define DEBUG
+    
+  
     rapidjson::Document forceD;
 
     // char *cstr = new char[in_message->string().length() + 1];
     // strcpy(cstr, in_message->string().c_str());
     // std::cout << "msg length : " << in_message->string().length() << std::endl;
     // std::cout << "actual string received : " << cstr << std::endl;
+    // std::cerr << "parse error: " << forceD.Parse(in_message->string().c_str()).GetParseError() << std::endl; while(1) {}
     if (forceD.Parse(in_message->string().c_str()).HasParseError() ) {
         std::cerr << "\n\nparse error\n" << std::endl;
     };
@@ -359,8 +363,10 @@ void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*
         latestTime = timestamp;
         fInMutex.unlock(); // unlocks mutex
     }
+    // std::cout << " fReceived x: " << x << " y: " << y << " z: " << z << "time: " << timestamp << std::endl;
+    
 
-    // printf("linear = %d\n", document["linear"].GetString());
+    
 }
 
 void positionPublisherThread(RosbridgeWsClient& client, const std::future<void>& futureObj) {
@@ -428,6 +434,8 @@ void IsosimEngine::init(void) {
 
     auto startStepClock = std::chrono::steady_clock::now();
     
+
+    /* testing code
     //give an initial force
     commsClient.set_latest_force_time({0,0,100},prevSimTime + FDtimestep);
     // latestForce = {0,0,100}; // Newtons
@@ -466,7 +474,8 @@ void IsosimEngine::init(void) {
     
     std::cout << "Completed backward test in " << ((double) (timeAtEnd - timeAtStart))/CLOCKS_PER_SEC << " seconds\n";
 
-    
+    */
+
 
 }
 
@@ -484,13 +493,14 @@ void IsosimEngine::set_state(int state) {
 
 void IsosimEngine::loop(void) {
 
-    while(1) {
+    while(1) { //TODO: check control logic here
         // std::cout << "forcefromcomms" << commsClient.get_latest_force() << std::endl;
-        clock_t tim = std::clock();
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        std::cout << "\nslept for : " << (std::clock() - tim);
+        // clock_t tim = std::clock();
+        // std::this_thread::sleep_for(std::chrono::seconds(1));
+        // std::cout << "\nslept for : " << (std::clock() - tim);
+        step();
     }
-;
+
 }
 
 /*******PRIVATE***************/
@@ -591,7 +601,6 @@ bool IsosimEngine::generateIDModel(void) {
     Vector udotActuatorsCombination = si.getUDot();
 
 
-    std::cout << "ground control to major tom\n";
     
     
     /////////////////////////////////////////////
@@ -616,13 +625,11 @@ bool IsosimEngine::generateIDModel(void) {
     
     #ifdef IDFD
     IDelbowJoint.getCoordinate().setLocked(si, true);
-    std::cout << "ground control to Major Tom\n";
     
     std::cout << IDshoulderJoint.numCoordinates() << "<-- number of state var\n";
     for (int i = 0; i < IDshoulderJoint.numCoordinates(); i++) { //locks all coordinates of the joint
         IDshoulderJoint.get_coordinates(i).setLocked(si,true);
     }
-    std::cout << "standby for takeoff, and put your seatbelt on\n";
     
     // IDshoulderJoint.getCoordinate().setLocked(si,true);
     #else
@@ -930,7 +937,7 @@ void IsosimEngine::step(void) {
         auto finishStepClock = std::chrono::steady_clock::now();
         std::chrono::duration<double> stepDuration = std::chrono::duration_cast<std::chrono::duration<double>>(finishStepClock - startStepClock);
         // std::cerr << " in " << ((double)(std::clock() - initTime) / CLOCKS_PER_SEC) << "clocl secs ";
-        std::cout << " or " << stepDuration.count() << std::endl;
+        // std::cout << " or " << stepDuration.count() << std::endl;
 
     }
     // double stepTime = ((double) (std::clock() - initTime))/CLOCKS_PER_SEC;
@@ -940,6 +947,7 @@ void IsosimEngine::step(void) {
 
 IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
 
+    
     IsosimEngine::ID_Input input(forceVecToInput(commsClient.get_latest_force())); //need to make this threadsafe eventually
     IsosimEngine::ID_Output output;
     output.valid = false; //change to true later if data
@@ -1119,7 +1127,7 @@ auto tim22 = std::chrono::steady_clock::now();
                                                             //TODO: actually, didn't I change it to a pointer??? I thought I called updAdvancedState().... not sure what's happening here
 
     double stepped1 = newState_.getTime() - step0;
-    std::cout << "stepped " << stepped1 << " ";
+    // std::cout << "stepped " << stepped1 << " ";
     #ifdef LOGGING
         logger << " " << stepped1 << " ";
         logger << "  " << newState_.getTime() << "  ";
