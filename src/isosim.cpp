@@ -250,7 +250,7 @@ bool publishState(IsosimROS::IsosimData stateData) {
     d.AddMember("elbow",elbowVec,d.GetAllocator());
     d.AddMember("time",timestamp,d.GetAllocator());
     
-
+    // std::cout << d["wrist"]["x"].GetDouble() << "<--wrist pos\n";
     // std::cout << "    published stuff to /isosimtopic   ";
     RBcppClient.publish("/isosimtopic",d);
 
