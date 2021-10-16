@@ -153,8 +153,8 @@ class IsosimEngine {
         //applies spring to joint when it approaches its limit
         double torqueSpring(double q, double u, double udot, double torque, const OpenSim::Coordinate* coord);
         double Kspring = 20; //K constant for joint springs (N.m/rad)
-        double Bspring = 4*0; //Beta constant for joint springs (damping) (N.m.s/rad)
-        double Bfree = 0.1*0; //Beta constant for damping within range of motion (N.m.s/rad)
+        double Bspring = 4;//*0; //Beta constant for joint springs (damping) (N.m.s/rad)
+        double Bfree = 0.1;//*0; //Beta constant for damping within range of motion (N.m.s/rad)
 
         void step(void);
 

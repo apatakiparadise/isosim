@@ -301,7 +301,7 @@ void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*
     #ifdef DEBUG
     std::cout << "subscriberCallback(): Message Received: " << in_message->string() << std::endl; //THIS DESTROYS THE BUFFER AND SO CAN ONLY BE CALLED ONCE
     #endif 
-    #define DEBUG
+    // #define DEBUG
     
   
     rapidjson::Document forceD;
@@ -954,7 +954,7 @@ IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
     output.timestamp = input.timestamp;
 
     if (input.timestamp <= prevSimTime) {
-        std::cout << "time stayed at " << output.timestamp << std::endl;
+        // std::cout << "time stayed at " << output.timestamp << std::endl;
         //we haven't progressed
         return output; //output set to invalid
     }
@@ -1113,7 +1113,8 @@ auto tim22 = std::chrono::steady_clock::now();
     int numreturns = 0;
     // while (integrator_->getAdvancedTime() < step0 + FDtimestep) {
     
-        SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep);
+        // SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep);
+        SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepTo(input.timestamp);
         // _FDstepper->stepTo(prevSimTime + FDtimestep);
         // std::cout << "\nstepstatus: " << SimTK::Integrator::successfulStepStatusString(result) << " \n";
         // numreturns++;
@@ -1121,12 +1122,16 @@ auto tim22 = std::chrono::steady_clock::now();
     // std::cout << "numreturns->" << numreturns << "  ";
     // std::cout << integrator_->getAccuracyInUse() << "<-accuracy ";
     // std::cout << prevSimTime << "<-time ";
+
     auto tim2 = std::chrono::steady_clock::now();
     
     SimTK::State newState_ = integrator_->getAdvancedState(); //TODO: should this work with the State& state_ now that I changed it to a pointer?
                                                             //TODO: actually, didn't I change it to a pointer??? I thought I called updAdvancedState().... not sure what's happening here
 
     double stepped1 = newState_.getTime() - step0;
+    if (newState_.getTime() < input.timestamp) {
+        std::cout << "integrator returned before complete timestep. Stepped: " << stepped1;
+    }
     // std::cout << "stepped " << stepped1 << " ";
     #ifdef LOGGING
         logger << " " << stepped1 << " ";
@@ -1178,15 +1183,15 @@ double IsosimEngine::torqueSpring(double q, double u, double udot, double torque
     // std::cout << "T_in " << torque << " ";
     
     if ( q > (coord->getRangeMax() - tol) ) {
-        std::cout << "T_in " << torque << " ";
+        // std::cout << "T_in " << torque << " ";
         double x = q - (coord->getRangeMax() - tol); //displacement from upper equilibrium point
         torque +=  Kspring * x + Bspring * u;
-        std::cout << "OVER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
+        // std::cout << "OVER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
     } else if (q < (coord->getRangeMin() + tol) ) {
-        std::cout << "T_in " << torque << " ";
+        // std::cout << "T_in " << torque << " ";
         double x = q - (coord->getRangeMin() + tol); //displacement from lower equilibrium point (will be negative)
         torque +=  Kspring * x + Bspring * u;
-        std::cout << "UNDER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
+        // std::cout << "UNDER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
 
     } else {
         // std::cout << "T_in " << torque << " ";
