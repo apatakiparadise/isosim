@@ -877,7 +877,7 @@ bool IsosimEngine::generateFDModel(void) {
     FDelbowCustomJoint.getCoordinate().setClamped(si,true);
     for (int i=0; i<FDshoulderCustomJoint.numCoordinates(); i++) {
         FDshoulderCustomJoint.get_coordinates(i).setClamped(si,true);
-        FDshoulderCustomJoint.get_coordinates(i).setLocked(si,true);
+        // FDshoulderCustomJoint.get_coordinates(i).setLocked(si,true);
     }
     // FDshoulderCustomJoint.getCoordinate().setClamped(si,true);
     
@@ -1062,8 +1062,8 @@ auto tim0 = std::chrono::steady_clock::now();
     // std::cout << "indices:  shouldElev " << SHOULDER_ELEV_QNUM << "    shouldRot " 
     //         << SHOULDER_ROT_QNUM << " elbowFlex " << ELBOW_QNUM << std::endl;
 
-    shoulderControls1_(0) = 0;//input.residualMobilityForces(SHOULDER_ELEV_QNUM) / FDshoulderTorque1.getOptimalForce();
-    shoulderControls2_(0) = 0;//input.residualMobilityForces(SHOULDER_ROT_QNUM) / FDshoulderTorque2.getOptimalForce();
+    // shoulderControls1_(0) = 0;//input.residualMobilityForces(SHOULDER_ELEV_QNUM) / FDshoulderTorque1.getOptimalForce();
+    // shoulderControls2_(0) = 0;//input.residualMobilityForces(SHOULDER_ROT_QNUM) / FDshoulderTorque2.getOptimalForce();
     // elbowControls_(0) = input.residualMobilityForces(ELBOW_QNUM) / FDelbowTorque.getOptimalForce();
 
     SimTK::Vector qVec_ = state_.getQ();
@@ -1071,12 +1071,12 @@ auto tim0 = std::chrono::steady_clock::now();
     SimTK::Vector uDVec_ = state_.getUDot();
 
 
-    // shoulderControls1_(0) = torqueSpring(qVec_(SHOULDER_ELEV_QNUM), uVec_(SHOULDER_ELEV_QNUM), uDVec_(SHOULDER_ELEV_QNUM),
-    //         input.residualMobilityForces(SHOULDER_ELEV_QNUM), &FDshoulderCustomJoint.get_coordinates(0))
-    //         / FDshoulderTorque1.getOptimalForce();
-    // shoulderControls2_(0) = torqueSpring(qVec_(SHOULDER_ROT_QNUM), uVec_(SHOULDER_ROT_QNUM), uDVec_(SHOULDER_ROT_QNUM),
-    //         input.residualMobilityForces(SHOULDER_ROT_QNUM), &FDshoulderCustomJoint.get_coordinates(1))
-    //         / FDshoulderTorque2.getOptimalForce();
+    shoulderControls1_(0) = torqueSpring(qVec_(SHOULDER_ELEV_QNUM), uVec_(SHOULDER_ELEV_QNUM), uDVec_(SHOULDER_ELEV_QNUM),
+            input.residualMobilityForces(SHOULDER_ELEV_QNUM), &FDshoulderCustomJoint.get_coordinates(0))
+            / FDshoulderTorque1.getOptimalForce();
+    shoulderControls2_(0) = torqueSpring(qVec_(SHOULDER_ROT_QNUM), uVec_(SHOULDER_ROT_QNUM), uDVec_(SHOULDER_ROT_QNUM),
+            input.residualMobilityForces(SHOULDER_ROT_QNUM), &FDshoulderCustomJoint.get_coordinates(1))
+            / FDshoulderTorque2.getOptimalForce();
     elbowControls_(0) = torqueSpring(qVec_(ELBOW_QNUM), uVec_(ELBOW_QNUM), uDVec_(ELBOW_QNUM),
             input.residualMobilityForces(ELBOW_QNUM), &FDelbowCustomJoint.getCoordinate() )
             / FDelbowTorque.getOptimalForce();
