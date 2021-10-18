@@ -51,6 +51,9 @@ static bool _newPosAvailable; //represents whether the data in latestPositionDat
 RosbridgeWsClient RBcppClient("localhost:9090");
 // RosbridgeWsClient RBcppClient("192.168.0.1");
 
+static SimTK::Vec3 forceBuf[10];
+static int forceBufIndex;
+
 //order of joints in system state Q/Qdot/Udot vectors
 #define SHOULDER_ELEV_QNUM 0
 #define SHOULDER_ROT_QNUM 1
@@ -121,7 +124,11 @@ void IsosimROS::init(void) {
         latestForce = {0,0,0};
         fInMutex.unlock();
     }
-    
+
+    for (int i = 0; i < 10; i++) {
+        forceBuf[i].setToZero();
+    }    
+    forceBufIndex = 0;
 
     RBcppClient.addClient("service_advertiser");
     RBcppClient.advertiseService("service_advertiser", "/isosimservice", "std_srvs/SetBool", advertiserCallback);
@@ -354,12 +361,25 @@ void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*
     double z = forceD["msg"]["force"]["z"].GetDouble();
     double timestamp = forceD["msg"]["time"].GetDouble();
 
+        forceBuf[forceBufIndex] = {x,y,z};
+        forceBufIndex++;
+        forceBufIndex = forceBufIndex % 10; //cycle through each value in array 
+
+        SimTK::Vec3 fSum = {0,0,0};
+
+        for (int i = 0; i < 10; i++) {
+            fSum = fSum + forceBuf[i];
+        }
+        fSum = fSum / 10;
 
     {
         fInMutex.lock(); //locks mutex
+        
+        
 
         //save to global variable
-        latestForce = {x,y,z};
+        // latestForce = {x,y,z};
+        latestForce = fSum;
         latestTime = timestamp;
         fInMutex.unlock(); // unlocks mutex
     }
@@ -1184,19 +1204,19 @@ Enforces joint limits by adding a spring when the given coordinate approaches it
 */
 double IsosimEngine::torqueSpring(double q, double u, double udot, double torque, const OpenSim::Coordinate* coord) {
     
-    double tol = (coord->getRangeMax() - coord->getRangeMin())*0.1; // the upper and lower 10% of the range will have a spring
+    double tol = (coord->getRangeMax() - coord->getRangeMin())*0.25; // the upper and lower __% of the range will have a spring
     // std::cout << coord->getName() << tol << std::endl; return torque;
     // std::cout << "T_in " << torque << " ";
     if ( q > (coord->getRangeMax() - tol) ) {
-        std::cout << "T_in " << torque << " ";
+        // std::cout << "T_in " << torque << " ";
         double x = q - (coord->getRangeMax() - tol); //displacement from upper equilibrium point
         torque +=  Kspring * x + Bspring * u;
-        std::cout << "OVER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
+        // std::cout << "OVER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
     } else if (q < (coord->getRangeMin() + tol) ) {
-        std::cout << "T_in " << torque << " ";
+        // std::cout << "T_in " << torque << " ";
         double x = q - (coord->getRangeMin() + tol); //displacement from lower equilibrium point (will be negative)
         torque +=  Kspring * x + Bspring * u;
-        std::cout << "UNDER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
+        // std::cout << "UNDER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
 
     } else {
         // std::cout << "T_in " << torque << " ";
