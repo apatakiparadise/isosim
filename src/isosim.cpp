@@ -876,14 +876,17 @@ bool IsosimEngine::generateFDModel(void) {
     //clamp joints to within limits
     FDelbowCustomJoint.getCoordinate().setClamped(si,true);
     for (int i=0; i<FDshoulderCustomJoint.numCoordinates(); i++) {
+        
         FDshoulderCustomJoint.get_coordinates(i).setClamped(si,true);
         // FDshoulderCustomJoint.get_coordinates(i).setLocked(si,true);
     }
     // FDshoulderCustomJoint.getCoordinate().setClamped(si,true);
-    
+    // FDshoulderCustomJoint.get_coordinates(1).setLocked(si,true); //TODO DELETE 
+    // FDelbowCustomJoint.getCoordinate().setLocked(si,true);
+
     
     FDModel.print("FDisosimModel.osim");
-    // FDModel.printDetailedInfo(si, std::cout);
+    FDModel.printDetailedInfo(si, std::cout);
 
    
     si.setTime(initialTime);
@@ -1131,6 +1134,9 @@ auto tim22 = std::chrono::steady_clock::now();
     double stepped1 = newState_.getTime() - step0;
     if (newState_.getTime() < input.timestamp) {
         std::cout << "integrator returned before complete timestep. Stepped: " << stepped1;
+    } else if (newState_.getTime() > (input.timestamp + FDtimestep*10)  ) {
+        std::cerr << "We stepped more than 10 timesteps more thatn we should have\n";
+        // std::cerr << "stepped " << stepped1;
     }
     // std::cout << "stepped " << stepped1 << " ";
     #ifdef LOGGING
@@ -1178,20 +1184,19 @@ Enforces joint limits by adding a spring when the given coordinate approaches it
 */
 double IsosimEngine::torqueSpring(double q, double u, double udot, double torque, const OpenSim::Coordinate* coord) {
     
-    double tol = (coord->getRangeMax() - coord->getRangeMin())*0.25; // the upper and lower 10% of the range will have a spring
+    double tol = (coord->getRangeMax() - coord->getRangeMin())*0.1; // the upper and lower 10% of the range will have a spring
     // std::cout << coord->getName() << tol << std::endl; return torque;
     // std::cout << "T_in " << torque << " ";
-    
     if ( q > (coord->getRangeMax() - tol) ) {
-        // std::cout << "T_in " << torque << " ";
+        std::cout << "T_in " << torque << " ";
         double x = q - (coord->getRangeMax() - tol); //displacement from upper equilibrium point
         torque +=  Kspring * x + Bspring * u;
-        // std::cout << "OVER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
+        std::cout << "OVER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
     } else if (q < (coord->getRangeMin() + tol) ) {
-        // std::cout << "T_in " << torque << " ";
+        std::cout << "T_in " << torque << " ";
         double x = q - (coord->getRangeMin() + tol); //displacement from lower equilibrium point (will be negative)
         torque +=  Kspring * x + Bspring * u;
-        // std::cout << "UNDER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
+        std::cout << "UNDER: " << coord->getName() << " q " << q << " x " << x << " u " << u << " torque " << torque << "\n";
 
     } else {
         // std::cout << "T_in " << torque << " ";
@@ -1199,9 +1204,17 @@ double IsosimEngine::torqueSpring(double q, double u, double udot, double torque
         torque += Bfree * u;
         // std::cout << "GOOD: " << coord->getName() << " q " << q << " u " << u << " torque " << torque <<  "\n";
     }
+    #define MAX_ABS_TORQUE 20
+    if (torque > MAX_ABS_TORQUE) { //clamp torque
+        torque = MAX_ABS_TORQUE;
+    } else if (torque < -MAX_ABS_TORQUE) {
+        torque = -MAX_ABS_TORQUE;
+    }
+
     #ifdef LOGGING
         logger << q << " " << u  << " " << torque << std::endl;
     #endif
+
     return torque;
 }
 
