@@ -829,6 +829,7 @@ bool IsosimEngine::generateFDModel(void) {
         muscleSet.get(i).set_appliesForce(false);
     }
 
+    
 
     //add torque actuators (to be controlled by ID input)
     SimTK::Vec3 FDshoulderAxis1 = FDshoulderCustomJoint.getSpatialTransform().get_rotation1().getAxis();
@@ -923,6 +924,8 @@ bool IsosimEngine::generateFDModel(void) {
 
     OpenSim::Logger::setLevel(OpenSim::Logger::Level::Off); //Not Useful
     
+    std::cout << "shoulder loc: " << FDshoulderCustomJoint.getParentFrame().getPositionInGround(si) << std::endl;
+    FDshoulderPosG = FDshoulderCustomJoint.getParentFrame().getPositionInGround(si);
     std::cout << "FDmodel generated\n";
 
     return true;
@@ -1171,8 +1174,8 @@ auto tim22 = std::chrono::steady_clock::now();
 
     //find positions in ground frame
         // SimTK::Vec3 humerusPos = FDModel.getBodySet().get("r_humerus").getPositionInGround(newState_); //humerus pos doesn't change (shoulder is fixed location)
-    output.elbowPos = FDModel.getBodySet().get("r_ulna_radius_hand").getPositionInGround(newState_);
-    output.wristPos = FDModel.getMarkerSet().get("r_radius_styloid").getLocationInGround(newState_);
+    output.elbowPos = FDModel.getBodySet().get("r_ulna_radius_hand").getPositionInGround(newState_) - FDshoulderPosG; //position is sent as distance from shoulder
+    output.wristPos = FDModel.getMarkerSet().get("r_radius_styloid").getLocationInGround(newState_) - FDshoulderPosG;
     if (output.elbowPos.size() > 0) {
         output.valid = true;
     }

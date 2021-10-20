@@ -149,7 +149,7 @@ class IsosimEngine {
 
         //performs one iteration of forward dynamics
         IsosimEngine::FD_Output forwardD(IsosimEngine::ID_Output input);
-
+        SimTK::Vec3 FDshoulderPosG;
         //applies spring to joint when it approaches its limit
         double torqueSpring(double q, double u, double udot, double torque, const OpenSim::Coordinate* coord);
         double Kspring = 20; //K constant for joint springs (N.m/rad)
