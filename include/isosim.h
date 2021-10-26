@@ -79,6 +79,10 @@ class IsosimROS {
         std::promise<void> pubExitSignal;
         std::thread* pubTh;
         std::future<void> futureObj;
+
+        std::promise<void> subExitSignal;
+        std::thread* subTh;
+        std::future<void> subFutureObj;
 };
 
 class IsosimEngine {

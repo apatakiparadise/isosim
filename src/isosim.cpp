@@ -38,6 +38,8 @@ double _clock_secs(clock_t ctim) ;
 static void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
 static void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message);
 static void positionPublisherThread(RosbridgeWsClient& client, const std::future<void>& futureObj);
+static void forceSubscriberThread(RosbridgeWsClient& client, const std::future<void>& futureObj);
+
 bool publishState(IsosimROS::IsosimData stateData);
 
 
@@ -122,6 +124,7 @@ void IsosimROS::init(void) {
     // SimTK::Vec3 latestForce;
     if (fInMutex.try_lock()) {
         latestForce = {0,0,0};
+        latestTime = 0.0;
         fInMutex.unlock();
     }
 
@@ -136,10 +139,12 @@ void IsosimROS::init(void) {
     RBcppClient.addClient("topic_advertiser");
     RBcppClient.advertise("topic_advertiser", "/isosimtopic", "franka_panda_controller_swc/ArmJointPos");
 
+    subFutureObj = subExitSignal.get_future();
+    subTh = new std::thread(&forceSubscriberThread, std::ref(RBcppClient), std::cref(subFutureObj));
 
-    RBcppClient.addClient("topic_subscriber"); //TODO: put this in its own thread
+    /////RBcppClient.addClient("topic_subscriber"); //TODO: put this in its own thread
     // RBcppClient.subscribe("topic_subscriber", "cartesian_impedance_controller_NR/force_output",forceSubscriberCallback);
-    RBcppClient.subscribe("topic_subscriber", "/ROSforceOutput",forceSubscriberCallback);
+    /////RBcppClient.subscribe("topic_subscriber", "/ROSforceOutput",forceSubscriberCallback);
     //publish some data     roslaunch rosbridge_server rosbridge_websocket.launch
 
     // RBcppClient.addClient("test_publisher");  //TODO: what does this publisher client actually do? and where???
@@ -168,12 +173,15 @@ void IsosimROS::init(void) {
 /* Threadsafe method to get the latest force that we've received from our subscriber thread
 */
 IsosimROS::ForceInput IsosimROS::get_latest_force(void) {
-
     if (fInMutex.try_lock()) {
         _latestInput.force = latestForce;
         _latestInput.time = latestTime;
+
+        fInMutex.unlock();
     }
-    fInMutex.unlock();
+    
+    
+  
 
     //threadsafe
     return _latestInput;
@@ -304,6 +312,8 @@ void advertiserCallback(std::shared_ptr<WsClient::Connection> /*connection*/, st
 
 void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*/, std::shared_ptr<WsClient::InMessage> in_message)
 {  
+
+    // auto callIn =  std::chrono::steady_clock::now();
     #undef DEBUG
     #ifdef DEBUG
     std::cout << "subscriberCallback(): Message Received: " << in_message->string() << std::endl; //THIS DESTROYS THE BUFFER AND SO CAN ONLY BE CALLED ONCE
@@ -380,13 +390,19 @@ void forceSubscriberCallback(std::shared_ptr<WsClient::Connection> /*connection*
         //save to global variable
         // latestForce = {x,y,z};
         latestForce = fSum;
-        latestTime = timestamp;
+        if (timestamp < 0) { //DEBUG CODE, USED TO SEND REPEATED INPUT WITHOUT FRANKA
+            latestTime += 0.002;
+        } else {
+            latestTime = timestamp;
+        }
         fInMutex.unlock(); // unlocks mutex
     }
-    // std::cout << " fReceived x: " << x << " y: " << y << " z: " << z << "time: " << timestamp << std::endl;
+    std::cout << " fReceived x: " << x << " y: " << y << " z: " << z << "time: " << timestamp << std::endl;
     
 
-    
+    // auto callOut = std::chrono::steady_clock::now();
+    // std::chrono::duration<double> callDur = std::chrono::duration_cast<std::chrono::duration<double>>(callOut - callIn);
+    // std::cout << " calltime: " << callDur.count() << " ";
 }
 
 void positionPublisherThread(RosbridgeWsClient& client, const std::future<void>& futureObj) {
@@ -423,6 +439,22 @@ void positionPublisherThread(RosbridgeWsClient& client, const std::future<void>&
 }
 
 
+void forceSubscriberThread(RosbridgeWsClient& client, const std::future<void>& futureObj) {
+
+    std::cout << " force subscriber, ";
+
+
+    client.addClient("topic_subscriber"); //TODO: put this in its own thread
+    // RBcppClient.subscribe("topic_subscriber", "cartesian_impedance_controller_NR/force_output",forceSubscriberCallback);
+    client.subscribe("topic_subscriber", "/ROSforceOutput",forceSubscriberCallback);
+
+
+    while(futureObj.wait_for(std::chrono::microseconds(500*10000)) == std::future_status::timeout) {
+        //do nothing (subcription is handled by interrupts)
+    }
+
+}
+
 /*****************************************************************************************************************************
  ******************************************************************************************************************************
  * IsosimEngine FUNCTIONS
@@ -450,6 +482,8 @@ void IsosimEngine::init(void) {
 
         logger.open("Output/position.log", std::ios_base::app);
         logger << "ISOSIM DATA\n DATE: " << asctime(curtime) << "\nTIMESTAMP Q\n";
+        logger << "cpus available: " << std::thread::hardware_concurrency() <<
+         "\nTIMEIN FINmag FINdir RESt STEPPED TIMEOUT Q WRISTPOS ELBOWPOS\n" ;
     #endif
 
     auto startStepClock = std::chrono::steady_clock::now();
@@ -944,6 +978,11 @@ void IsosimEngine::step(void) {
     
     if (IDout.valid) {
 
+        #ifdef LOGGING          //order is time, mobilityforces, torqueactuator, wristpos, elbowpos
+            // logger << " " << IDout.timestamp <<  "    " << IDout.residualMobilityForces << " ";
+            logger <<  "    " << IDout.residualMobilityForces << " ";
+        #endif
+
         
         //get output torques in a form that is usable to the FD engine
 
@@ -956,6 +995,7 @@ void IsosimEngine::step(void) {
 
         #ifdef LOGGING
             // logger << FDout.timestamp << "   " ;//<< FDout.wristPos << std::endl;
+            logger << " " << FDout.wristPos << " " << FDout.elbowPos << std::endl;
         #endif
         
         prevSimTime = IDout.timestamp; //shouldn't be necessary with control input //TODO this
@@ -963,7 +1003,7 @@ void IsosimEngine::step(void) {
         auto finishStepClock = std::chrono::steady_clock::now();
         std::chrono::duration<double> stepDuration = std::chrono::duration_cast<std::chrono::duration<double>>(finishStepClock - startStepClock);
         // std::cerr << " in " << ((double)(std::clock() - initTime) / CLOCKS_PER_SEC) << "clocl secs ";
-        // std::cout << " or " << stepDuration.count() << std::endl;
+        std::cout << " or " << stepDuration.count() << std::endl;
 
     }
     // double stepTime = ((double) (std::clock() - initTime))/CLOCKS_PER_SEC;
@@ -984,8 +1024,10 @@ IsosimEngine::ID_Output IsosimEngine::inverseD(void) {
         //we haven't progressed
         return output; //output set to invalid
     }
-
-
+    #ifdef LOGGING
+        logger << "  " << input.timestamp << "  " << input.forceMag << " " << input.forceDirection << " ";
+    #endif
+    
     SimTK::Integrator* integrator_ = &IDmanager->getIntegrator();
 
     SimTK::State state_ = integrator_->getAdvancedState();
@@ -1165,6 +1207,7 @@ auto tim22 = std::chrono::steady_clock::now();
     #ifdef LOGGING
         logger << " " << stepped1 << " ";
         logger << "  " << newState_.getTime() << "  ";
+        logger << "      " << newState_.getQ() << "  ";
     #endif
     FDModel.getVisualizer().show(newState_);
 
@@ -1235,7 +1278,7 @@ double IsosimEngine::torqueSpring(double q, double u, double udot, double torque
     }
 
     #ifdef LOGGING
-        logger << q << " " << u  << " " << torque << std::endl;
+        // logger << q << " " << u  << " " << torque ;//<< std::endl;
     #endif
 
     return torque;
