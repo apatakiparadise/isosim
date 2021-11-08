@@ -1,4 +1,5 @@
 /**************************************************************
+ * ***********DEPRECATED - Use isosim.cpp*******************
  * ISOSIM Isometric External Force header
  * Attaches external force to the ID model
  * 
