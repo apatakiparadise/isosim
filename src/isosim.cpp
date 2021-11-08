@@ -114,14 +114,8 @@ int main(void) {
 void IsosimROS::init(void) {
 
     std::cout << "isosim comms init..." ;
-    //do nothing
-    // RosbridgeWsClient RBcppClient("localhost:9090");
-    // RBcppClientptr = &RBcppClient;
-    // RBcppClient = RosbridgeWsClient("localhost:9090");
-
-    // static SimTK::Vec3 ForceVar(0,0,0);
-    // latestForce = &ForceVar;
-    // SimTK::Vec3 latestForce;
+    
+    
     if (fInMutex.try_lock()) {
         latestForce = {0,0,0};
         latestTime = 0.0;
@@ -142,12 +136,6 @@ void IsosimROS::init(void) {
     subFutureObj = subExitSignal.get_future();
     subTh = new std::thread(&forceSubscriberThread, std::ref(RBcppClient), std::cref(subFutureObj));
 
-    /////RBcppClient.addClient("topic_subscriber"); //TODO: put this in its own thread
-    // RBcppClient.subscribe("topic_subscriber", "cartesian_impedance_controller_NR/force_output",forceSubscriberCallback);
-    /////RBcppClient.subscribe("topic_subscriber", "/ROSforceOutput",forceSubscriberCallback);
-    //publish some data     roslaunch rosbridge_server rosbridge_websocket.launch
-
-    // RBcppClient.addClient("test_publisher");  //TODO: what does this publisher client actually do? and where???
     
     
 
@@ -157,15 +145,8 @@ void IsosimROS::init(void) {
     pubTh = new std::thread(&positionPublisherThread, std::ref(RBcppClient), std::cref(futureObj));
     std::this_thread::sleep_for(std::chrono::seconds(5));
     std::cout << " ...threads/clients created\n";
-    // rapidjson::Document d;
-    // d.SetObject();
-    // d.AddMember("data", "Test message from /isosimtopic", d.GetAllocator());
-    // while(1) {
-    //     RBcppClient.publish("/isosimtopic",d);
-    //     std::this_thread::sleep_for(std::chrono::seconds(100));
-    // }
-
-
+    
+    
     
     return;
 }
@@ -272,6 +253,7 @@ bool publishState(IsosimROS::IsosimData stateData) {
     return true; //when should we return false? //TODO
 }
 
+// to test:
 // rostopic pub -r 10 /twistfromCMD geometry_msgs/Twist  "{linear:  {x: 0.1, y: 0.0, z: 0.0}, angular: {x: 0.0,y: 0.0, z: 0.0}}"
 // roslaunch rosbridge_server rosbridge_websocket.launch
 
@@ -548,10 +530,8 @@ void IsosimEngine::set_state(int state) {
 void IsosimEngine::loop(void) {
 
     while(1) { //TODO: check control logic here
-        // std::cout << "forcefromcomms" << commsClient.get_latest_force() << std::endl;
-        // clock_t tim = std::clock();
-        // std::this_thread::sleep_for(std::chrono::seconds(1));
-        // std::cout << "\nslept for : " << (std::clock() - tim);
+        
+        
         step();
     }
 
@@ -740,58 +720,8 @@ bool IsosimEngine::generateIDModel(void) {
     idSolver = solver;
     idSolver->setName("id_solver");
 
-    /*
-    clock_t timeAtStart = clock();
-    clock_t currentTime = timeAtStart;
-    while (simTime < finalTime) {
-        currentTime = clock();
-        
-        if ( (reversed == false) && (simTime > finalTime / 2) ) {
-            endEffector.set_direction(reverseDirection);
-            reversed==true;
-        }
-        endEffectorControls(0) = simTime / finalTime;
-        Vector modelControls = IDModel.getDefaultControls();
-        // modelControls.dump("old mod controls");
-        endEffector.addInControls(endEffectorControls,modelControls);
-        // modelControls.dump("new mod controls");
-        IDModel.setControls(state_, modelControls);
-
-
-        IDModel.getMultibodySystem().realize(state_, Stage::Dynamics);
-        if (simTime < initialTime+(timestep*3)) {
-            simTime += timestep;
-            continue;
-        }
-        
-        const Vector& appliedMobilityForces = 
-                IDModel.getMultibodySystem().getMobilityForces(state_, Stage::Dynamics);
-
-        const SimTK::Vector testUdot = Test::randVector(state_.getNU())*0;
-
-        SimTK::Vector_<SimTK::SpatialVec> appliedBodyForces(IDModel.getMultibodySystem().getRigidBodyForces(state_, SimTK::Stage::Dynamics));
-
-       
-        residualMobilityForces = idSolver->solve(state_,testUdot,appliedMobilityForces,appliedBodyForces);
-
-
-        std::cout << "residualmobforces: " << residualMobilityForces << " at time: " << simTime << std::endl;
-        
-
-        simTime+= timestep;
-        //below function calls only necessary for visualising over time (and they don't work)
-        integrator_->stepBy(timestep);
-        state_ = integrator_->getAdvancedState();
-        IDModel.getVisualizer().show(state_);
-        // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
+   
     
-    } //end while loop
-    
-
-    clock_t timeAtEnd = clock();   
-    std::cout << "integrated from " << initialTime << " to " << finalTime << " seconds  in " << (timeAtEnd - timeAtStart)*1000/CLOCKS_PER_SEC << " milliseconds\n";
-    */
     #else //NOT REALTIME
     // Integrate from initial time to final time
     std::cout << "commencing non-realtime simulation\n";
@@ -1127,9 +1057,6 @@ auto tim0 = std::chrono::steady_clock::now();
     Vector elbowControls_(1);
     
     
-    // std::cout << "indices:  shouldElev " << SHOULDER_ELEV_QNUM << "    shouldRot " 
-    //         << SHOULDER_ROT_QNUM << " elbowFlex " << ELBOW_QNUM << std::endl;
-
     // shoulderControls1_(0) = 0;//input.residualMobilityForces(SHOULDER_ELEV_QNUM) / FDshoulderTorque1.getOptimalForce();
     // shoulderControls2_(0) = 0;//input.residualMobilityForces(SHOULDER_ROT_QNUM) / FDshoulderTorque2.getOptimalForce();
     // elbowControls_(0) = input.residualMobilityForces(ELBOW_QNUM) / FDelbowTorque.getOptimalForce();
@@ -1160,7 +1087,7 @@ auto tim0 = std::chrono::steady_clock::now();
 
     FDModel.setControls(state_,modelControls_);
 
-auto tim22 = std::chrono::steady_clock::now();
+    auto tim22 = std::chrono::steady_clock::now();
     
 
 
@@ -1179,18 +1106,10 @@ auto tim22 = std::chrono::steady_clock::now();
     auto tim1 =  std::chrono::steady_clock::now();
     // SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep); //eventually will need stepTo() because we might miss timesteps
     int numreturns = 0;
-    // while (integrator_->getAdvancedTime() < step0 + FDtimestep) {
     
-        // SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepBy(FDtimestep);
-        SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepTo(input.timestamp);
-        // _FDstepper->stepTo(prevSimTime + FDtimestep);
-        // std::cout << "\nstepstatus: " << SimTK::Integrator::successfulStepStatusString(result) << " \n";
-        // numreturns++;
-    // }
-    // std::cout << "numreturns->" << numreturns << "  ";
-    // std::cout << integrator_->getAccuracyInUse() << "<-accuracy ";
-    // std::cout << prevSimTime << "<-time ";
-
+    SimTK::Integrator::SuccessfulStepStatus result = integrator_->stepTo(input.timestamp);
+    
+    
     auto tim2 = std::chrono::steady_clock::now();
     
     SimTK::State newState_ = integrator_->getAdvancedState(); //TODO: should this work with the State& state_ now that I changed it to a pointer?
@@ -1224,11 +1143,6 @@ auto tim22 = std::chrono::steady_clock::now();
     }
 
     
-    // std::cout << " in " << ((double)(std::clock() - FDstartTime) / CLOCKS_PER_SEC) << "s ";
-// auto tim3 = std::chrono::steady_clock::now();
-//     std::chrono::duration<double> steppingDur = std::chrono::duration_cast<std::chrono::duration<double>>(tim2 - tim22);
-//     std::cout << "stepdur " << steppingDur.count() << "secs" << std::endl;
-
 
     return output;
 
@@ -1285,61 +1199,6 @@ double IsosimEngine::torqueSpring(double q, double u, double udot, double torque
 }
 
 
-/*
-IsosimEngine::FD_Output IsosimEngine::forwardInverseD(void) {
-
-    IsosimEngine::ID_Input input(forceVecToInput(latestForce)); //need to make this threadsafe eventually
-
-    IsosimEngine::FD_Output output;
-    output.timestamp = input.timestamp;
-
-    SimTK::Integrator* integrator_ = &IDmanager->getIntegrator();
-    SimTK::State& state_ = integrator_->updAdvancedState();
-
-    
-    IDModel.getMultibodySystem().realize(state_,Stage::Dynamics);
-    
-    Vector controls(1);
-    controls(0) = input.forceMag / endEffector.get_optimal_force();
-
-    SimTK::Vec3 direction = input.forceDirection;
-    endEffector.set_direction(direction);
-
-    Vector modelControls = IDModel.getDefaultControls();
-    endEffector.addInControls(controls, modelControls);
-
-    IDModel.setControls(state_,modelControls);
-    IDModel.getMultibodySystem().realize(state_, Stage::Acceleration);//del
-
-    //step FD
-    integrator_->stepBy(FDtimestep);
-
-    state_.getQ();
-    
-    // SimTK::clampInPlace( shoulderElevRange(0), state_.updQ()(0),shoulderElevRange(1));
-    // SimTK::clampInPlace(elbowFlexRange(0),state_.updQ()(1),elbowFlexRange(1));
-    // SimTK::State newState_ = integrator_->getAdvancedState();
-    // IDModel.getMultibodySystem().realize(newState_, Stage::Acceleration);
-
-    // IDModel.getControls(newState_).dump("new state controls");
-
-    IDModel.getVisualizer().show(state_);
-    output.q = state_.getQ();
-    output.u = state_.getU();
-    output.uDot = state_.getUDot();
-
-    std::cout << latestForce << "<-- force at time -->" << output.timestamp << std::endl;
-    std::cout << output.q << "<-- Q at time -->" << output.timestamp << std::endl;
-    std::cout << output.uDot << "<-- uDot at time -->" << output.timestamp << std::endl; 
-
-
-    output.valid = true;
-
-    return output;
-}
-*/
-
-
 IsosimROS::IsosimData IsosimEngine::FDoutputToIsosimData(IsosimEngine::FD_Output calculatedState) {
 
 
@@ -1369,74 +1228,6 @@ IsosimEngine::~IsosimEngine() {
 
 
 
-/////TEST FUNCTION (OBSOLETE)
-/*
-void IsosimEngine::testPointActuator(void) {
-
-    try {
-
-        OpenSim::Model model =  OpenSim::Model("Models/arm26.osim"); std::cout << "loaded model from arm26" << std::endl;
-        const OpenSim::BodySet& IDbodyset = model.get_BodySet();
-        const OpenSim::Body& humerusbod = IDbodyset.get("r_humerus");
-        const OpenSim::Body& radiusbod = IDbodyset.get("r_ulna_radius_hand");
-        std::cout << humerusbod.getName() << "<---name of humerusbod\n";
-        std::cout << radiusbod.getName() << "<---name of radiusbod\n";
-        IDbodyset.print("bodyset.bods");
-        model.setUseVisualizer(true);
-        model.initSystem();
-
-        OpenSim::PointActuator* pAct = new OpenSim::PointActuator(radiusbod.getName());
-        pAct->setName("pact");
-        double optforce = 1;
-        pAct->setOptimalForce(optforce);
-        pAct->set_force_is_global(true);
-        pAct->set_point(SimTK::Vec3(1,1,1));
-        pAct->set_point_is_global(false);
-        model.addForce(pAct);
-        model.finalizeConnections();
-
-        SimTK::State& state1 = model.initSystem();
-
-        Vector pointActuatorControls(1); // input to addInControl should be a Vector
-        pointActuatorControls(0) = optforce; // axis already defined when initializing
-        SimTK::Vec3 forceInG(1,1,1);
-        Vector pointActuatorVector(3); // to print out the whole force vector
-        for (int i = 0; i < 3; i++){
-            pointActuatorVector(i) = forceInG(i);
-        }
-        pointActuatorVector.dump("Forces applied by the point Actuator:");
-
-        // Add control values and set their values
-        Vector modelControls = model.getDefaultControls();
-        pAct->addInControls(pointActuatorControls, modelControls);
-        modelControls.dump("model controls post adding:");
-        model.setDefaultControls(modelControls);
-        std::cout << "hey hey, no segfault\n";
-        model.computeStateVariableDerivatives(state1);
-        Vector udotActuatorsCombination = state1.getUDot();
-        udotActuatorsCombination.dump("Accelerations due to actuator");
-
-
-        OpenSim::Manager manager(model);
-        manager.setIntegratorAccuracy(1e-3);
-        state1.setTime(0);
-        manager.initialize(state1);
-        double endt = 1;
-        manager.integrate(endt);
-
-
-
-
-    }
-    catch(const std::exception& ex) {
-        std::cout << "Exception here : " << ex.what() <<  std::endl;
-        return;
-    }
-};
-
-*/
-
-
 
 //PRIVATE HELPER FUNCTIONS
 
@@ -1448,9 +1239,7 @@ double _clock_secs(clock_t ctim) {
     
 
     return res;
-
-
-    // return (double) ((double) ctim) / ((double) CLOCKS_PER_SEC) ;
+    
 }
 
 // } //namespace isosim
