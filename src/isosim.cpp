@@ -17,7 +17,8 @@
 
 typedef std::chrono::high_resolution_clock Clock;
 
-#define LOGGING
+#define LOGGING  //logging position/force info throughout each step. 
+                // TODO: change all logging code to happen within a separate thread
 
 #define IDFD
 // #undef IDFD //not doing both currently
@@ -66,9 +67,7 @@ int main(void) {
     //do stuff
 
     std::cout << "main has been called" << std::endl; std::cout << get_current_dir_name() << std::endl;
-    // IsosimROS rosclient;
 
-    // rosclient.init();
 
     IsosimEngine engine;
 
@@ -248,12 +247,15 @@ bool publishState(IsosimROS::IsosimData stateData) {
     
     // std::cout << d["wrist"]["x"].GetDouble() << "<--wrist pos\n";
     // std::cout << "    published stuff to /isosimtopic   ";
-    RBcppClient.publish("/isosimtopic",d);
+    RBcppClient.publish("/isosimtopic",d);    //TODO Currently the rosbridgecpp library 
+                    //opens and closes a new connection each time a message is sent. 
+                    //This is computationally expensive and so the library should be modified accordingly
+
 
     return true; //when should we return false? //TODO
 }
 
-// to test:
+// to test (from CMD line):
 // rostopic pub -r 10 /twistfromCMD geometry_msgs/Twist  "{linear:  {x: 0.1, y: 0.0, z: 0.0}, angular: {x: 0.0,y: 0.0, z: 0.0}}"
 // roslaunch rosbridge_server rosbridge_websocket.launch
 
@@ -462,7 +464,7 @@ void IsosimEngine::init(void) {
         struct tm * curtime = localtime ( &_tm );
         std::cout<<"The current date/time is:"<<asctime(curtime);
 
-        logger.open("Output/position.log", std::ios_base::app);
+        logger.open("Output/position.log", std::ios_base::app); //todo: customise name of file so we have a new log file each runtime
         logger << "ISOSIM DATA\n DATE: " << asctime(curtime) << "\nTIMESTAMP Q\n";
         logger << "cpus available: " << std::thread::hardware_concurrency() <<
          "\nTIMEIN FINmag FINdir RESt STEPPED TIMEOUT Q WRISTPOS ELBOWPOS\n" ;
@@ -471,46 +473,6 @@ void IsosimEngine::init(void) {
     auto startStepClock = std::chrono::steady_clock::now();
     
 
-    /* testing code
-    //give an initial force
-    commsClient.set_latest_force_time({0,0,100},prevSimTime + FDtimestep);
-    // latestForce = {0,0,100}; // Newtons
-    // latestTime = prevSimTime + FDtimestep;
-    int stepsTaken = 0;
-    clock_t timeAtStart = std::clock();
-    for (double i = 0; i < 20; i+= FDtimestep) {
-        step();
-        commsClient.set_latest_force_time({0,0,100},prevSimTime + FDtimestep);
-
-        // latestTime+= FDtimestep;
-        stepsTaken++;
-    }
-    clock_t midTime = std::clock();
-    // latestForce = {0,0,0};
-    commsClient.set_latest_force_time({0,0,100},prevSimTime + FDtimestep);
-    // for (double i = 0; i < 20; i+= IDtimestep) {
-    //     step();
-    //     latestTime += FDtimestep;
-    // }
-    // latestForce = {0,0,0};
-    // for (double i = 0; i < 20; i+= IDtimestep) {
-    //     step();
-    //     latestTime+= FDtimestep;
-    // }
-    
-    clock_t timeAtEnd = std::clock();
-    std::cout << "Final SimTime: " << latestTime << " after " << stepsTaken << " iterations\n";
-    // std::cout << "Completed forward test in " << ((double) (midTime - timeAtStart))/CLOCKS_PER_SEC << " seconds\n";
-
-    auto finishStepClock = std::chrono::steady_clock::now();
-    std::chrono::duration<double> stepDuration = std::chrono::duration_cast<std::chrono::duration<double>>(finishStepClock - startStepClock);
-
-    std::cout << "Time taken to perform sim: " << stepDuration.count() << "wall seconds";
-    std::cout << "or " << _clock_secs(midTime - timeAtStart) << " clock secs\n";
-    
-    std::cout << "Completed backward test in " << ((double) (timeAtEnd - timeAtStart))/CLOCKS_PER_SEC << " seconds\n";
-
-    */
 
 
 }
@@ -643,9 +605,6 @@ bool IsosimEngine::generateIDModel(void) {
     
 
 
-    //reporters
-    // OpenSim::ForceReporter* forceRep = new OpenSim::ForceReporter(&IDModel);
-    // IDModel.updAnalysisSet().adoptAndAppend(forceRep);
 
     
     IDmanager = new OpenSim::Manager(IDModel);
@@ -666,7 +625,7 @@ bool IsosimEngine::generateIDModel(void) {
     }
     
     // IDshoulderJoint.getCoordinate().setLocked(si,true);
-    #else
+    #else  //NOT IDFD -- rather than doing first ID then FD, we do FD directly (not properly tested)
     IDelbowJoint.getCoordinate().setClamped(si,true);
     IDshoulderJoint.getCoordinate().setClamped(si,true);
     std::cout << "shoulder coord free to satisfy constraints" << IDshoulderJoint.getCoordinate().get_is_free_to_satisfy_constraints() << std::endl;
@@ -678,75 +637,75 @@ bool IsosimEngine::generateIDModel(void) {
     // Print out details of the model
     IDModel.printDetailedInfo(si, std::cout);
 
-    #define TEST_ID
-    #ifdef TEST_ID 
-    #define REALTIME_TEST
-    #ifdef REALTIME_TEST
-    //REALTIME STUFF BELOW
-    std::cout << "--------------------------ENTER REALTIME TEST MODE--------------------\n";
-    si.setTime(initialTime);
-    IDmanager->initialize(si);
-    //get engine properties (just for our while loop here)
-    SimTK::Integrator* integrator_ = &IDmanager->getIntegrator();
-    std::cout << "using the " << integrator_->getMethodName() << " integration method\n"; //TODO compare performance of different integrators
+    // #define TEST_ID
+    // #ifdef TEST_ID 
+    // #define REALTIME_TEST
+    // #ifdef REALTIME_TEST
+    // //REALTIME STUFF BELOW
+    // std::cout << "--------------------------ENTER REALTIME TEST MODE--------------------\n";
+    // si.setTime(initialTime);
+    // IDmanager->initialize(si);
+    // //get engine properties (just for our while loop here)
+    // SimTK::Integrator* integrator_ = &IDmanager->getIntegrator();
+    // std::cout << "using the " << integrator_->getMethodName() << " integration method\n"; //TODO compare performance of different integrators
     
-    SimTK::State state_ =  integrator_->getAdvancedState();
+    // SimTK::State state_ =  integrator_->getAdvancedState();
 
-    IDModel.getVisualizer().show(state_);
-    IDModel.getMultibodySystem().realize(state_, Stage::Dynamics);
-    std::cout << "----------------IMPORTANT-------------------\n";
-    std::cout << "how many nq are there?\n";
-    std::cout << "and what coordinates do they represent?\n";
-    std::cout << "we shall find out\n";
-    std::cout << "there are ....  " << state_.getNQ() << " NQ in state_\n";
-    std::cout << "the current Q are " << state_.getQ() << " at initialisation\n";
-    std::cout << "but there are more subsystems\n";
-    std::cout << state_.getNumSubsystems() << " subsystems actually\n";
-    std::cout << "so let's try something different\n";
-    for (SimTK::SubsystemIndex subsysI(0); subsysI < state_.getNumSubsystems(); subsysI++) {
-        std::cout << state_.getNQ(subsysI) << " NQ in subsys " << subsysI << "\n";
+    // IDModel.getVisualizer().show(state_);
+    // IDModel.getMultibodySystem().realize(state_, Stage::Dynamics);
+    // std::cout << "----------------IMPORTANT-------------------\n";
+    // std::cout << "how many nq are there?\n";
+    // std::cout << "and what coordinates do they represent?\n";
+    // std::cout << "we shall find out\n";
+    // std::cout << "there are ....  " << state_.getNQ() << " NQ in state_\n";
+    // std::cout << "the current Q are " << state_.getQ() << " at initialisation\n";
+    // std::cout << "but there are more subsystems\n";
+    // std::cout << state_.getNumSubsystems() << " subsystems actually\n";
+    // std::cout << "so let's try something different\n";
+    // for (SimTK::SubsystemIndex subsysI(0); subsysI < state_.getNumSubsystems(); subsysI++) {
+    //     std::cout << state_.getNQ(subsysI) << " NQ in subsys " << subsysI << "\n";
            
-    }
-    std::cout << "what does this mean?\n";
+    // }
+    // std::cout << "what does this mean?\n";
     
 
-    SimTK::Vector residualMobilityForces;
-    double simTime = 0;
+    // SimTK::Vector residualMobilityForces;
+    // double simTime = 0;
 
-    SimTK::Vec3 reverseDirection = endEffector.get_direction() * -1;
-    bool reversed = false;
+    // SimTK::Vec3 reverseDirection = endEffector.get_direction() * -1;
+    // bool reversed = false;
 
-    OpenSim::InverseDynamicsSolver* solver = new OpenSim::InverseDynamicsSolver(IDModel);
-    idSolver = solver;
-    idSolver->setName("id_solver");
+    // OpenSim::InverseDynamicsSolver* solver = new OpenSim::InverseDynamicsSolver(IDModel);
+    // idSolver = solver;
+    // idSolver->setName("id_solver");
 
    
     
-    #else //NOT REALTIME
-    // Integrate from initial time to final time
-    std::cout << "commencing non-realtime simulation\n";
-    si.setTime(initialTime);
-    std::cout << "time is set, let's initialise the manager\n";
-    IDmanager->initialize(si);
+    // #else //NOT REALTIME
+    // // Integrate from initial time to final time
+    // std::cout << "commencing non-realtime simulation\n";
+    // si.setTime(initialTime);
+    // std::cout << "time is set, let's initialise the manager\n";
+    // IDmanager->initialize(si);
 
-    std::cout<<"\nIntegrating from "<<initialTime<<" to "<<finalTime<<std::endl;
-    IDmanager->integrate(finalTime);
+    // std::cout<<"\nIntegrating from "<<initialTime<<" to "<<finalTime<<std::endl;
+    // IDmanager->integrate(finalTime);
      
-    auto forcesTable = forceRep->getForcesTable();
-    forceRep->getForceStorage().print("forcestorage.mot");
+    // auto forcesTable = forceRep->getForcesTable();
+    // forceRep->getForceStorage().print("forcestorage.mot");
 
-    // std::string forceFilename
-    OpenSim::STOFileAdapter::write(forcesTable, "forces.sto");
-
-
-    std::cout << IDmanager->getIntegrator().getAdvancedState().getQ() << "<--Q??\n";
-    while(1) {
-        IDModel.getVisualizer().show(IDmanager->getIntegrator().getAdvancedState());
-    }
-    #endif
+    // // std::string forceFilename
+    // OpenSim::STOFileAdapter::write(forcesTable, "forces.sto");
 
 
-    #endif //TEST_ID
+    // std::cout << IDmanager->getIntegrator().getAdvancedState().getQ() << "<--Q??\n";
+    // while(1) {
+    //     IDModel.getVisualizer().show(IDmanager->getIntegrator().getAdvancedState());
+    // }
+    // #endif
+
+
+    // #endif //TEST_ID
     
 
 
@@ -863,12 +822,10 @@ bool IsosimEngine::generateFDModel(void) {
     for (int i=0; i<FDshoulderCustomJoint.numCoordinates(); i++) {
         
         FDshoulderCustomJoint.get_coordinates(i).setClamped(si,true);
-        // FDshoulderCustomJoint.get_coordinates(i).setLocked(si,true);
-    }
-    // FDshoulderCustomJoint.getCoordinate().setClamped(si,true);
-    // FDshoulderCustomJoint.get_coordinates(1).setLocked(si,true); //TODO DELETE 
-    // FDelbowCustomJoint.getCoordinate().setLocked(si,true);
 
+    }
+    
+    
     
     FDModel.print("FDisosimModel.osim");
     FDModel.printDetailedInfo(si, std::cout);
