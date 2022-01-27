@@ -972,7 +972,8 @@ IsosimEngine::ID_Input IsosimEngine::forceVecToInput(IsosimROS::ForceInput force
 
 
 IsosimEngine::FD_Output IsosimEngine::forwardD(IsosimEngine::ID_Output input) {
-auto tim0 = std::chrono::steady_clock::now();
+
+    auto tim0 = std::chrono::steady_clock::now();
 
     clock_t FDstartTime = std::clock();
 
